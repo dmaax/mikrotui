@@ -4,36 +4,36 @@ use crate::config::{AppConfig, HostConfig};
 use crate::ssh::SshConfig;
 
 pub fn run_add_host_wizard() -> Result<()> {
-    println!("\n🌐 === MikroTUI - Adicionar Novo Roteador ===\n");
+    println!("\n🌐 === MikroTUI - Add New Router Host ===\n");
 
-    let name = Text::new("Nome/Apelido para o Roteador (ex: Roteador-Escritorio):")
-        .with_default("Roteador-MikroTik")
+    let name = Text::new("Router Name/Alias (e.g. Office-Router):")
+        .with_default("MikroTik-Router")
         .prompt()?;
 
-    let host = Text::new("IP ou Hostname do MikroTik:")
+    let host = Text::new("MikroTik IP or Hostname:")
         .with_default("192.168.88.1")
         .prompt()?;
 
-    let port = CustomType::<u16>::new("Porta SSH:")
+    let port = CustomType::<u16>::new("SSH Port:")
         .with_default(22)
         .prompt()?;
 
-    let user = Text::new("Usuário SSH:")
+    let user = Text::new("SSH Username:")
         .with_default("admin")
         .prompt()?;
 
-    let password = Password::new("Senha SSH:")
+    let password = Password::new("SSH Password:")
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
         .prompt()?;
 
-    println!("\n📋 === Resumo da Configuração ===");
-    println!(" • Apelido:    {}", name);
+    println!("\n📋 === Configuration Summary ===");
+    println!(" • Alias:      {}", name);
     println!(" • Host / IP:  {}:{}", host, port);
-    println!(" • Usuário:    {}", user);
-    println!(" • Senha:      {}", if password.is_empty() { "(sem senha)" } else { "•••••••• (criptografada)" });
+    println!(" • User:       {}", user);
+    println!(" • Password:   {}", if password.is_empty() { "(no password)" } else { "•••••••• (encrypted)" });
     println!("=================================\n");
 
-    let confirm = Confirm::new("Deseja salvar esta configuração no arquivo permanente?")
+    let confirm = Confirm::new("Do you want to save this configuration permanently?")
         .with_default(true)
         .prompt()?;
 
@@ -51,9 +51,9 @@ pub fn run_add_host_wizard() -> Result<()> {
         app_config.add_host(host_cfg);
         app_config.save()?;
 
-        println!("✅ Configuração salva com sucesso em: {}\n", AppConfig::get_config_path()?.display());
+        println!("✅ Configuration successfully saved to: {}\n", AppConfig::get_config_path()?.display());
     } else {
-        println!("❌ Operação cancelada. A configuração não foi salva.");
+        println!("❌ Operation canceled. Configuration was not saved.");
     }
 
     Ok(())
@@ -63,40 +63,40 @@ pub fn run_list_hosts() -> Result<()> {
     let app_config = AppConfig::load()?;
 
     if app_config.hosts.is_empty() {
-        println!("\n⚠️  Nenhum host cadastrado em ~/.config/mikrotui/config.json");
-        println!("Use 'mikrotui host add' para cadastrar um novo roteador.\n");
+        println!("\n⚠️  No hosts registered in ~/.config/mikrotui/config.json");
+        println!("Use 'mikrotui host add' to register a new router.\n");
         return Ok(());
     }
 
-    println!("\n📜 === Roteadores Cadastrados no MikroTUI ===");
+    println!("\n📜 === Stored MikroTUI Routers ===");
     for (idx, h) in app_config.hosts.iter().enumerate() {
         let is_default = app_config.default_host.as_deref() == Some(&h.name);
         println!(
             " [{}] {} {} -> ssh {}@{}:{}",
             idx + 1,
             h.name,
-            if is_default { "(Padrão)" } else { "" },
+            if is_default { "(Default)" } else { "" },
             h.user,
             h.host,
             h.port
         );
     }
-    println!("=============================================\n");
+    println!("===================================\n");
     Ok(())
 }
 
 pub fn handle_first_time_run() -> Result<Option<SshConfig>> {
-    println!("\n⚠️  Nenhum arquivo de configuração encontrado em:");
+    println!("\n⚠️  No configuration file found at:");
     println!("   {}", AppConfig::get_config_path()?.display());
     println!();
 
     let options = vec![
-        "🧙 Criar um novo host de forma assistida (Salvar permanentemente em arquivo)",
-        "⚡ Testar temporariamente um host (Sem salvar permanentemente)",
-        "🎮 Entrar em Modo Demonstração (Demo)",
+        "🧙 Add a new host interactively (Save permanently to config file)",
+        "⚡ Connect temporarily to a host (Without saving permanently)",
+        "🎮 Launch Demo Mode (No physical router required)",
     ];
 
-    let ans = Select::new("O que deseja fazer?", options).prompt()?;
+    let ans = Select::new("What would you like to do?", options).prompt()?;
 
     if ans.starts_with("🧙") {
         run_add_host_wizard()?;
@@ -113,10 +113,10 @@ pub fn handle_first_time_run() -> Result<Option<SshConfig>> {
             }
         }
     } else if ans.starts_with("⚡") {
-        let host = Text::new("IP/Host temporário:").with_default("192.168.88.1").prompt()?;
-        let port = CustomType::<u16>::new("Porta SSH:").with_default(22).prompt()?;
-        let user = Text::new("Usuário SSH:").with_default("admin").prompt()?;
-        let pass = Password::new("Senha SSH:")
+        let host = Text::new("Temporary IP/Host:").with_default("192.168.88.1").prompt()?;
+        let port = CustomType::<u16>::new("SSH Port:").with_default(22).prompt()?;
+        let user = Text::new("SSH Username:").with_default("admin").prompt()?;
+        let pass = Password::new("SSH Password:")
             .with_display_mode(inquire::PasswordDisplayMode::Masked)
             .prompt()?;
 
@@ -156,7 +156,7 @@ pub fn prompt_select_host(config: &AppConfig) -> Result<SshConfig> {
     }
 
     let host_names: Vec<String> = config.hosts.iter().map(|h| format!("{} ({}:{})", h.name, h.host, h.port)).collect();
-    let choice = Select::new("Selecione o roteador para conectar:", host_names).prompt()?;
+    let choice = Select::new("Select router to connect:", host_names).prompt()?;
 
     let idx = config.hosts.iter().position(|h| choice.starts_with(&h.name)).unwrap_or(0);
     let h = &config.hosts[idx];
