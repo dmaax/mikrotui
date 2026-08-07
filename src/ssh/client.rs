@@ -13,6 +13,7 @@ pub struct SshConfig {
     pub port: u16,
     pub user: String,
     pub pass: Option<String>,
+    #[allow(dead_code)]
     pub key_path: Option<String>,
     pub demo_mode: bool,
 }

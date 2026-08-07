@@ -32,9 +32,9 @@ pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let host_info = format!(" Router: {} ({}) ", app.client.config.host, app.system_resource.board_name);
 
     let (safe_badge, safe_style) = if app.safe_mode {
-        (" [SAFE MODE: ENABLED] ", t.success.add_modifier(Modifier::BOLD))
+        (" [SAFE MODE: ENABLED] ", t.safe_mode_active)
     } else {
-        (" [SAFE MODE: DISABLED] ", t.danger.add_modifier(Modifier::BOLD))
+        (" [SAFE MODE: DISABLED] ", t.safe_mode_inactive)
     };
 
     let status_spans = vec![
@@ -42,7 +42,7 @@ pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
         Span::raw(" | "),
         Span::styled(safe_badge, safe_style),
         Span::raw(" | "),
-        Span::styled(" [READ-ONLY] ", t.warning.add_modifier(Modifier::BOLD)),
+        Span::styled(" [READ-ONLY] ", t.read_only_badge),
     ];
 
     let status_p = Paragraph::new(Line::from(status_spans))
