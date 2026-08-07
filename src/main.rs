@@ -20,7 +20,7 @@ use config::AppConfig;
 use ssh::{RouterClient, SshConfig};
 
 #[derive(Parser, Debug)]
-#[command(name = "mikrotui", version = "0.2.0", about = "WinBox TUI for MikroTik via SSH (Read-Only with Safe Mode)")]
+#[command(name = "mikrotui", version = env!("CARGO_PKG_VERSION"), about = "WinBox TUI for MikroTik via SSH (Read-Only with Safe Mode)")]
 struct CliArgs {
     #[command(subcommand)]
     command: Option<Commands>,
