@@ -3,7 +3,21 @@ use crate::models::*;
 use crate::ssh::{RouterClient, SshConfig};
 use crate::ui::theme::Theme;
 use anyhow::Result;
+use std::collections::HashMap;
+use std::time::Instant;
 use tokio::sync::mpsc;
+
+pub fn format_bps(bps: u64) -> String {
+    if bps >= 1_000_000_000 {
+        format!("{:.1} Gbps", bps as f64 / 1_000_000_000.0)
+    } else if bps >= 1_000_000 {
+        format!("{:.1} Mbps", bps as f64 / 1_000_000.0)
+    } else if bps >= 1_000 {
+        format!("{:.1} Kbps", bps as f64 / 1_000.0)
+    } else {
+        format!("{} bps", bps)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -99,6 +113,13 @@ pub struct App {
     pub available_hosts: Vec<HostConfig>,
     pub ping_state: PingState,
 
+    // Real-time Traffic History for Sparklines
+    pub rx_history: Vec<u64>,
+    pub tx_history: Vec<u64>,
+    pub current_rx_bps: u64,
+    pub current_tx_bps: u64,
+    pub last_traffic_sample: Option<(Instant, HashMap<String, (u64, u64)>)>,
+
     // Data models
     pub system_resource: SystemResource,
     pub interfaces: Vec<Interface>,
@@ -129,6 +150,11 @@ impl App {
             host_switch_selected: 0,
             available_hosts: Vec::new(),
             ping_state: PingState::Inactive,
+            rx_history: vec![12, 18, 25, 14, 30, 42, 35, 28, 50, 65, 48, 40, 55, 70, 62],
+            tx_history: vec![5, 8, 12, 6, 15, 20, 18, 14, 22, 30, 24, 18, 26, 35, 28],
+            current_rx_bps: 14_500_000,
+            current_tx_bps: 4_200_000,
+            last_traffic_sample: None,
             system_resource: SystemResource::default(),
             interfaces: Vec::new(),
             ip_addresses: Vec::new(),
@@ -165,7 +191,7 @@ impl App {
             self.show_host_switch_modal = false;
             self.status_message = format!("Connecting to router [{}] ({})...", host_cfg.name, host_cfg.host);
 
-            // Reset current view models
+            // Reset current view models & traffic history
             self.system_resource = SystemResource::default();
             self.interfaces.clear();
             self.ip_addresses.clear();
@@ -174,6 +200,9 @@ impl App {
             self.firewall_rules.clear();
             self.neighbors.clear();
             self.logs.clear();
+            self.rx_history.clear();
+            self.tx_history.clear();
+            self.last_traffic_sample = None;
             self.selected_index = 0;
 
             // Trigger background reload from new host
@@ -281,7 +310,12 @@ impl App {
         logs: Option<Vec<LogEntry>>,
     ) {
         if let Some(res) = system { if !res.board_name.is_empty() || !res.version.is_empty() { self.system_resource = res; } }
-        if let Some(ifaces) = interfaces { if !ifaces.is_empty() { self.interfaces = ifaces; } }
+        if let Some(ifaces) = interfaces {
+            if !ifaces.is_empty() {
+                self.update_traffic_history(&ifaces);
+                self.interfaces = ifaces;
+            }
+        }
         if let Some(addrs) = ip_addresses { if !addrs.is_empty() { self.ip_addresses = addrs; } }
         if let Some(routes) = ip_routes { if !routes.is_empty() { self.ip_routes = routes; } }
         if let Some(dhcp) = dhcp_leases { if !dhcp.is_empty() { self.dhcp_leases = dhcp; } }
@@ -291,6 +325,56 @@ impl App {
 
         self.is_loading = false;
         self.status_message = "✅ Data successfully updated via SSH.".to_string();
+    }
+
+    fn update_traffic_history(&mut self, ifaces: &[Interface]) {
+        let now = Instant::now();
+        let selected_iface_name = self.filtered_interfaces()
+            .get(self.selected_index)
+            .map(|i| i.name.clone())
+            .unwrap_or_else(|| ifaces.first().map(|i| i.name.clone()).unwrap_or_default());
+
+        if let Some((last_time, last_map)) = &self.last_traffic_sample {
+            let elapsed_secs = now.duration_since(*last_time).as_secs_f64().max(0.5);
+
+            if let Some(current_iface) = ifaces.iter().find(|i| i.name == selected_iface_name) {
+                if let Some(&(prev_rx, prev_tx)) = last_map.get(&selected_iface_name) {
+                    let delta_rx = current_iface.rx_byte.saturating_sub(prev_rx);
+                    let delta_tx = current_iface.tx_byte.saturating_sub(prev_tx);
+
+                    let rx_bps = ((delta_rx as f64 * 8.0) / elapsed_secs) as u64;
+                    let tx_bps = ((delta_tx as f64 * 8.0) / elapsed_secs) as u64;
+
+                    self.current_rx_bps = rx_bps;
+                    self.current_tx_bps = tx_bps;
+
+                    self.rx_history.push(rx_bps);
+                    self.tx_history.push(tx_bps);
+                }
+            }
+        } else if self.client.config.demo_mode || self.rx_history.is_empty() {
+            // Simulated dynamic sparkline points for Demo Mode
+            let next_rx = (10_000_000 + (now.elapsed().as_millis() % 40_000_000)) as u64;
+            let next_tx = (2_000_000 + (now.elapsed().as_millis() % 15_000_000)) as u64;
+            self.current_rx_bps = next_rx;
+            self.current_tx_bps = next_tx;
+            self.rx_history.push(next_rx);
+            self.tx_history.push(next_tx);
+        }
+
+        // Limit history to 30 data points
+        while self.rx_history.len() > 30 {
+            self.rx_history.remove(0);
+        }
+        while self.tx_history.len() > 30 {
+            self.tx_history.remove(0);
+        }
+
+        let mut new_map = HashMap::new();
+        for i in ifaces {
+            new_map.insert(i.name.clone(), (i.rx_byte, i.tx_byte));
+        }
+        self.last_traffic_sample = Some((now, new_map));
     }
 
     pub fn toggle_help_modal(&mut self) {
@@ -314,6 +398,7 @@ impl App {
 
         if let Ok(ifaces) = self.client.fetch_interfaces().await {
             if !ifaces.is_empty() {
+                self.update_traffic_history(&ifaces);
                 self.interfaces = ifaces;
             }
         }
