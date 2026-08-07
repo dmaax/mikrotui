@@ -47,6 +47,7 @@ pub fn render(f: &mut Frame, app: &App) {
         Tab::IpRoutes => views::ip_routes::render_ip_routes(f, app, content_chunks[1]),
         Tab::DhcpLeases => views::dhcp::render_dhcp_leases(f, app, content_chunks[1]),
         Tab::Firewall => views::firewall::render_firewall(f, app, content_chunks[1]),
+        Tab::Neighbors => views::neighbors::render_neighbors(f, app, content_chunks[1]),
         Tab::Logs => views::logs::render_logs(f, app, content_chunks[1]),
     }
 

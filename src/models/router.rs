@@ -87,6 +87,18 @@ pub struct FirewallRule {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Neighbor {
+    pub id: String,
+    pub interface: String,
+    pub identity: String,
+    pub mac_address: String,
+    pub ip_address: String,
+    pub platform: String,
+    pub board: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LogEntry {
     pub time: String,
     pub topics: String,

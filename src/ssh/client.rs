@@ -423,6 +423,58 @@ impl RouterClient {
         Ok(parsed)
     }
 
+    pub async fn fetch_neighbors(&self) -> Result<Vec<Neighbor>> {
+        if self.config.demo_mode {
+            return Ok(vec![
+                Neighbor {
+                    id: "0".to_string(),
+                    interface: "ether3".to_string(),
+                    identity: "Switch-Core-01".to_string(),
+                    mac_address: "DC:2C:6E:02:B0:10".to_string(),
+                    ip_address: "192.168.88.2".to_string(),
+                    platform: "MikroTik".to_string(),
+                    board: "CRS326-24G-2S+".to_string(),
+                    version: "7.16.1 (stable)".to_string(),
+                },
+                Neighbor {
+                    id: "1".to_string(),
+                    interface: "ether4".to_string(),
+                    identity: "AP-Office-Floor2".to_string(),
+                    mac_address: "48:A9:8A:11:22:33".to_string(),
+                    ip_address: "192.168.88.5".to_string(),
+                    platform: "MikroTik".to_string(),
+                    board: "cAP ac".to_string(),
+                    version: "7.14.3 (stable)".to_string(),
+                },
+                Neighbor {
+                    id: "2".to_string(),
+                    interface: "ether1-WAN".to_string(),
+                    identity: "Gateway-ISP".to_string(),
+                    mac_address: "00:1B:17:88:99:AA".to_string(),
+                    ip_address: "203.0.113.46".to_string(),
+                    platform: "Cisco".to_string(),
+                    board: "ASR1001-X".to_string(),
+                    version: "IOS-XE 17.3".to_string(),
+                },
+            ]);
+        }
+
+        let raw = self.exec_command("/ip neighbor print terse without-paging").await?;
+        let mut parsed = parser::parse_neighbors(&raw);
+
+        if parsed.is_empty() {
+            let raw_detail = self.exec_command("/ip neighbor print detail without-paging").await?;
+            parsed = parser::parse_neighbors(&raw_detail);
+        }
+
+        if parsed.is_empty() {
+            let raw_simple = self.exec_command("/ip neighbor print without-paging").await?;
+            parsed = parser::parse_neighbors(&raw_simple);
+        }
+
+        Ok(parsed)
+    }
+
     pub async fn fetch_logs(&self) -> Result<Vec<LogEntry>> {
         if self.config.demo_mode {
             return Ok(vec![

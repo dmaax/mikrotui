@@ -13,17 +13,19 @@ pub enum Tab {
     IpRoutes,
     DhcpLeases,
     Firewall,
+    Neighbors,
     Logs,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 7] = [
+    pub const ALL: [Tab; 8] = [
         Tab::System,
         Tab::Interfaces,
         Tab::IpAddresses,
         Tab::IpRoutes,
         Tab::DhcpLeases,
         Tab::Firewall,
+        Tab::Neighbors,
         Tab::Logs,
     ];
 
@@ -35,6 +37,7 @@ impl Tab {
             Tab::IpRoutes => "IP Routes",
             Tab::DhcpLeases => "DHCP Leases",
             Tab::Firewall => "Firewall Rules",
+            Tab::Neighbors => "Network Neighbors",
             Tab::Logs => "System Logs",
         }
     }
@@ -47,6 +50,7 @@ impl Tab {
             Tab::IpRoutes => "🔀",
             Tab::DhcpLeases => "💻",
             Tab::Firewall => "🛡 ",
+            Tab::Neighbors => "📡 ",
             Tab::Logs => "📜",
         }
     }
@@ -74,6 +78,7 @@ pub enum AppEvent {
         ip_routes: Option<Vec<IpRoute>>,
         dhcp_leases: Option<Vec<DhcpLease>>,
         firewall_rules: Option<Vec<FirewallRule>>,
+        neighbors: Option<Vec<Neighbor>>,
         logs: Option<Vec<LogEntry>>,
     },
     PingFinished(PingResult),
@@ -101,6 +106,7 @@ pub struct App {
     pub ip_routes: Vec<IpRoute>,
     pub dhcp_leases: Vec<DhcpLease>,
     pub firewall_rules: Vec<FirewallRule>,
+    pub neighbors: Vec<Neighbor>,
     pub logs: Vec<LogEntry>,
 
     pub status_message: String,
@@ -129,6 +135,7 @@ impl App {
             ip_routes: Vec::new(),
             dhcp_leases: Vec::new(),
             firewall_rules: Vec::new(),
+            neighbors: Vec::new(),
             logs: Vec::new(),
             status_message: "Connected. SAFE MODE ENABLED BY DEFAULT (Read-Only)".to_string(),
             is_loading: false,
@@ -165,6 +172,7 @@ impl App {
             self.ip_routes.clear();
             self.dhcp_leases.clear();
             self.firewall_rules.clear();
+            self.neighbors.clear();
             self.logs.clear();
             self.selected_index = 0;
 
@@ -215,6 +223,13 @@ impl App {
                     return item.address.clone();
                 }
             }
+            Tab::Neighbors => {
+                if let Some(item) = self.filtered_neighbors().get(self.selected_index) {
+                    if !item.ip_address.is_empty() {
+                        return item.ip_address.clone();
+                    }
+                }
+            }
             _ => {}
         }
         "8.8.8.8".to_string()
@@ -238,6 +253,7 @@ impl App {
             let ip_routes = client.fetch_ip_routes().await.ok();
             let dhcp_leases = client.fetch_dhcp_leases().await.ok();
             let firewall_rules = client.fetch_firewall_rules().await.ok();
+            let neighbors = client.fetch_neighbors().await.ok();
             let logs = client.fetch_logs().await.ok();
 
             let _ = tx.send(AppEvent::DataLoaded {
@@ -247,6 +263,7 @@ impl App {
                 ip_routes,
                 dhcp_leases,
                 firewall_rules,
+                neighbors,
                 logs,
             }).await;
         });
@@ -260,6 +277,7 @@ impl App {
         ip_routes: Option<Vec<IpRoute>>,
         dhcp_leases: Option<Vec<DhcpLease>>,
         firewall_rules: Option<Vec<FirewallRule>>,
+        neighbors: Option<Vec<Neighbor>>,
         logs: Option<Vec<LogEntry>>,
     ) {
         if let Some(res) = system { if !res.board_name.is_empty() || !res.version.is_empty() { self.system_resource = res; } }
@@ -268,6 +286,7 @@ impl App {
         if let Some(routes) = ip_routes { if !routes.is_empty() { self.ip_routes = routes; } }
         if let Some(dhcp) = dhcp_leases { if !dhcp.is_empty() { self.dhcp_leases = dhcp; } }
         if let Some(fw) = firewall_rules { if !fw.is_empty() { self.firewall_rules = fw; } }
+        if let Some(neigh) = neighbors { if !neigh.is_empty() { self.neighbors = neigh; } }
         if let Some(l) = logs { if !l.is_empty() { self.logs = l; } }
 
         self.is_loading = false;
@@ -323,6 +342,12 @@ impl App {
             }
         }
 
+        if let Ok(neigh) = self.client.fetch_neighbors().await {
+            if !neigh.is_empty() {
+                self.neighbors = neigh;
+            }
+        }
+
         if let Ok(logs) = self.client.fetch_logs().await {
             if !logs.is_empty() {
                 self.logs = logs;
@@ -373,6 +398,7 @@ impl App {
             Tab::IpRoutes => self.filtered_ip_routes().len(),
             Tab::DhcpLeases => self.filtered_dhcp_leases().len(),
             Tab::Firewall => self.filtered_firewall_rules().len(),
+            Tab::Neighbors => self.filtered_neighbors().len(),
             Tab::Logs => self.filtered_logs().len(),
         }
     }
@@ -437,6 +463,17 @@ impl App {
             let q = self.filter_query.to_lowercase();
             self.firewall_rules.iter().filter(|f| {
                 f.chain.to_lowercase().contains(&q) || f.action.to_lowercase().contains(&q) || f.comment.to_lowercase().contains(&q)
+            }).collect()
+        }
+    }
+
+    pub fn filtered_neighbors(&self) -> Vec<&Neighbor> {
+        if self.filter_query.is_empty() {
+            self.neighbors.iter().collect()
+        } else {
+            let q = self.filter_query.to_lowercase();
+            self.neighbors.iter().filter(|n| {
+                n.interface.to_lowercase().contains(&q) || n.identity.to_lowercase().contains(&q) || n.ip_address.to_lowercase().contains(&q) || n.mac_address.to_lowercase().contains(&q) || n.board.to_lowercase().contains(&q)
             }).collect()
         }
     }
