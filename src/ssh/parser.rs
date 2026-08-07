@@ -343,6 +343,29 @@ pub fn parse_firewall_rules(raw: &str) -> Vec<FirewallRule> {
     }).collect()
 }
 
+pub fn parse_neighbors(raw: &str) -> Vec<Neighbor> {
+    let items = parse_routeros_output(raw);
+    items.into_iter().map(|map| {
+        let interface = map.get("interface").cloned().unwrap_or_else(|| "unknown".to_string());
+        let identity = map.get("identity")
+            .or_else(|| map.get("system-caps"))
+            .or_else(|| map.get("system-description"))
+            .cloned()
+            .unwrap_or_else(|| "Unknown-Device".to_string());
+
+        Neighbor {
+            id: map.get(".id").cloned().unwrap_or_default(),
+            interface,
+            identity,
+            mac_address: map.get("mac-address").cloned().unwrap_or_default(),
+            ip_address: map.get("address").or_else(|| map.get("ip-address")).cloned().unwrap_or_default(),
+            platform: map.get("platform").cloned().unwrap_or_else(|| "MikroTik".to_string()),
+            board: map.get("board").or_else(|| map.get("board-name")).cloned().unwrap_or_default(),
+            version: map.get("version").or_else(|| map.get("software-version")).cloned().unwrap_or_default(),
+        }
+    }).collect()
+}
+
 pub fn parse_logs(raw: &str) -> Vec<LogEntry> {
     let cleaned = strip_ansi_codes(raw);
     let mut entries = Vec::new();
@@ -436,6 +459,20 @@ pub fn parse_ping_output(target: &str, raw: &str) -> PingResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_neighbor_parser() {
+        let raw = "0 interface=ether3 identity=\"Switch-Core-01\" mac-address=DC:2C:6E:02:B0:10 address=192.168.88.2 platform=\"MikroTik\" board=\"CRS326-24G-2S+\" version=\"7.16.1 (stable)\"\n1 interface=ether4 identity=\"AP-Office-Floor2\" mac-address=48:A9:8A:11:22:33 address=192.168.88.5 platform=\"MikroTik\" board=\"cAP ac\" version=\"7.14.3 (stable)\"";
+        let parsed = parse_neighbors(raw);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].interface, "ether3");
+        assert_eq!(parsed[0].identity, "Switch-Core-01");
+        assert_eq!(parsed[0].mac_address, "DC:2C:6E:02:B0:10");
+        assert_eq!(parsed[0].ip_address, "192.168.88.2");
+        assert_eq!(parsed[0].board, "CRS326-24G-2S+");
+        assert_eq!(parsed[1].identity, "AP-Office-Floor2");
+        assert_eq!(parsed[1].board, "cAP ac");
+    }
 
     #[test]
     fn test_ping_parser() {

@@ -151,6 +151,24 @@ fn get_modal_content(app: &App) -> (String, Vec<Line<'static>>) {
                 ("Firewall Details".to_string(), vec![Line::from("No item selected")])
             }
         }
+        Tab::Neighbors => {
+            let list = app.filtered_neighbors();
+            if let Some(item) = list.get(app.selected_index) {
+                let lines = vec![
+                    Line::from(vec![Span::styled("Internal ID: ", t.accent.add_modifier(Modifier::BOLD)), Span::styled(item.id.clone(), t.normal_text)]),
+                    Line::from(vec![Span::styled("Device Identity: ", t.accent.add_modifier(Modifier::BOLD)), Span::styled(item.identity.clone(), t.title.add_modifier(Modifier::BOLD))]),
+                    Line::from(vec![Span::styled("Local Port/Interface: ", t.accent.add_modifier(Modifier::BOLD)), Span::styled(item.interface.clone(), t.accent)]),
+                    Line::from(vec![Span::styled("IP Address: ", t.accent.add_modifier(Modifier::BOLD)), Span::styled(item.ip_address.clone(), t.success.add_modifier(Modifier::BOLD))]),
+                    Line::from(vec![Span::styled("MAC Address: ", t.accent.add_modifier(Modifier::BOLD)), Span::styled(item.mac_address.clone(), t.warning)]),
+                    Line::from(vec![Span::styled("Board Model: ", t.accent.add_modifier(Modifier::BOLD)), Span::styled(item.board.clone(), t.normal_text)]),
+                    Line::from(vec![Span::styled("Platform Vendor: ", t.accent.add_modifier(Modifier::BOLD)), Span::styled(item.platform.clone(), t.normal_text)]),
+                    Line::from(vec![Span::styled("RouterOS Version: ", t.accent.add_modifier(Modifier::BOLD)), Span::styled(item.version.clone(), t.muted_text)]),
+                ];
+                (format!("Neighbor Device Details [{}]", item.identity), lines)
+            } else {
+                ("Neighbor Device Details".to_string(), vec![Line::from("No item selected")])
+            }
+        }
         Tab::Logs => {
             let list = app.filtered_logs();
             if let Some(item) = list.get(app.selected_index) {

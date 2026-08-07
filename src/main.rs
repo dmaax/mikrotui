@@ -55,7 +55,7 @@ enum Commands {
     },
     /// Dump MikroTik resources as JSON or Text without opening TUI
     Dump {
-        /// Resource: system, interfaces, ip-addresses, ip-routes, dhcp-leases, firewall, logs
+        /// Resource: system, interfaces, ip-addresses, ip-routes, dhcp-leases, firewall, neighbors, logs
         #[arg(default_value = "system")]
         resource: String,
 
@@ -208,6 +208,14 @@ async fn run_dump_command(cli: &CliArgs, resource: &str, format: &str, force_dem
                 println!("{:#?}", list);
             }
         }
+        "neighbors" | "neighbor" => {
+            let list = client.fetch_neighbors().await?;
+            if is_json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+            } else {
+                println!("{:#?}", list);
+            }
+        }
         "logs" => {
             let list = client.fetch_logs().await?;
             if is_json {
@@ -217,7 +225,7 @@ async fn run_dump_command(cli: &CliArgs, resource: &str, format: &str, force_dem
             }
         }
         _ => {
-            return Err(anyhow!("Unknown resource: '{}'. Valid options: system, interfaces, ip-addresses, ip-routes, dhcp-leases, firewall, logs", resource));
+            return Err(anyhow!("Unknown resource: '{}'. Valid options: system, interfaces, ip-addresses, ip-routes, dhcp-leases, firewall, neighbors, logs", resource));
         }
     }
 
@@ -292,9 +300,10 @@ async fn run_app(
                     ip_routes,
                     dhcp_leases,
                     firewall_rules,
+                    neighbors,
                     logs,
                 } => {
-                    app.apply_loaded_data(system, interfaces, ip_addresses, ip_routes, dhcp_leases, firewall_rules, logs);
+                    app.apply_loaded_data(system, interfaces, ip_addresses, ip_routes, dhcp_leases, firewall_rules, neighbors, logs);
                 }
                 app::AppEvent::PingFinished(result) => {
                     app.status_message = format!("✅ Ping completed for {}: {}% loss", result.target, result.packet_loss_pct);
