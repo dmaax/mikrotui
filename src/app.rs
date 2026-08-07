@@ -82,7 +82,6 @@ pub struct App {
     pub active_tab: Tab,
     pub selected_index: usize,
     pub safe_mode: bool,
-    pub read_only: bool,
     pub input_mode: InputMode,
     pub filter_query: String,
     pub client: RouterClient,
@@ -110,7 +109,6 @@ impl App {
             active_tab: Tab::System,
             selected_index: 0,
             safe_mode: true,
-            read_only: true,
             input_mode: InputMode::Normal,
             filter_query: String::new(),
             client: RouterClient::new(config),
@@ -229,10 +227,6 @@ impl App {
 
         self.is_loading = false;
         self.status_message = "✅ Data successfully updated via SSH.".to_string();
-    }
-
-    pub fn toggle_detail_modal(&mut self) {
-        self.show_detail_modal = !self.show_detail_modal;
     }
 
     pub fn toggle_help_modal(&mut self) {
