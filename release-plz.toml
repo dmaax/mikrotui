@@ -4,7 +4,8 @@
 release_always = false
 changelog_update = true
 
-[package]
+[[package]]
+name = "mikrotui"
 release = true
 changelog_path = "CHANGELOG.md"
 semver_check = false
