@@ -1,0 +1,18 @@
+# Cargo build directory
+/target/
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Sensitive local test files & credentials
+*.env
+*.pem
+*.key
+config.json
