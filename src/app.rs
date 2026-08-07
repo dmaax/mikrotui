@@ -150,10 +150,10 @@ impl App {
             host_switch_selected: 0,
             available_hosts: Vec::new(),
             ping_state: PingState::Inactive,
-            rx_history: vec![12, 18, 25, 14, 30, 42, 35, 28, 50, 65, 48, 40, 55, 70, 62],
-            tx_history: vec![5, 8, 12, 6, 15, 20, 18, 14, 22, 30, 24, 18, 26, 35, 28],
-            current_rx_bps: 14_500_000,
-            current_tx_bps: 4_200_000,
+            rx_history: Vec::new(),
+            tx_history: Vec::new(),
+            current_rx_bps: 0,
+            current_tx_bps: 0,
             last_traffic_sample: None,
             system_resource: SystemResource::default(),
             interfaces: Vec::new(),
@@ -202,6 +202,8 @@ impl App {
             self.logs.clear();
             self.rx_history.clear();
             self.tx_history.clear();
+            self.current_rx_bps = 0;
+            self.current_tx_bps = 0;
             self.last_traffic_sample = None;
             self.selected_index = 0;
 
@@ -345,23 +347,17 @@ impl App {
                     let calc_rx_bps = ((delta_rx as f64 * 8.0) / elapsed_secs) as u64;
                     let calc_tx_bps = ((delta_tx as f64 * 8.0) / elapsed_secs) as u64;
 
-                    if calc_rx_bps > 0 {
-                        self.current_rx_bps = calc_rx_bps;
-                    }
-                    if calc_tx_bps > 0 {
-                        self.current_tx_bps = calc_tx_bps;
-                    }
+                    self.current_rx_bps = calc_rx_bps;
+                    self.current_tx_bps = calc_tx_bps;
 
                     self.rx_history.push(self.current_rx_bps);
                     self.tx_history.push(self.current_tx_bps);
                 }
             }
         } else {
-            // Initial sample registration
-            let next_rx = if self.current_rx_bps > 0 { self.current_rx_bps } else { 14_500_000 };
-            let next_tx = if self.current_tx_bps > 0 { self.current_tx_bps } else { 4_200_000 };
-            self.rx_history.push(next_rx);
-            self.tx_history.push(next_tx);
+            // Initial sample: push starting points
+            self.rx_history.push(0);
+            self.tx_history.push(0);
         }
 
         // Limit history buffer to 30 data points
