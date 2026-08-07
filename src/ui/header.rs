@@ -21,7 +21,7 @@ pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
     // Left Title Block
     let title_spans = vec![
         Span::styled(" MikroTUI ", t.title),
-        Span::styled(" v0.1.0 ", t.muted_text),
+        Span::styled(" v0.2.0 ", t.muted_text),
         Span::styled(" (WinBox TUI) ", t.accent.add_modifier(Modifier::BOLD)),
     ];
     let title_p = Paragraph::new(Line::from(title_spans))
