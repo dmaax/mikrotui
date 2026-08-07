@@ -1,0 +1,10 @@
+# Configuration for release-plz: automated semver & crates.io publishing based on Conventional Commits
+
+[workspace]
+release_always = false
+changelog_update = true
+
+[package]
+release = true
+changelog_path = "CHANGELOG.md"
+semver_check = false
