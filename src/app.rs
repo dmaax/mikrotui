@@ -113,11 +113,9 @@ pub struct App {
     pub available_hosts: Vec<HostConfig>,
     pub ping_state: PingState,
 
-    // Real-time Traffic History for Sparklines
-    pub rx_history: Vec<u64>,
-    pub tx_history: Vec<u64>,
-    pub current_rx_bps: u64,
-    pub current_tx_bps: u64,
+    // Per-interface Real-time Traffic History for Sparklines
+    pub rx_histories: HashMap<String, Vec<u64>>,
+    pub tx_histories: HashMap<String, Vec<u64>>,
     pub last_traffic_sample: Option<(Instant, HashMap<String, (u64, u64)>)>,
 
     // Data models
@@ -150,10 +148,8 @@ impl App {
             host_switch_selected: 0,
             available_hosts: Vec::new(),
             ping_state: PingState::Inactive,
-            rx_history: Vec::new(),
-            tx_history: Vec::new(),
-            current_rx_bps: 0,
-            current_tx_bps: 0,
+            rx_histories: HashMap::new(),
+            tx_histories: HashMap::new(),
             last_traffic_sample: None,
             system_resource: SystemResource::default(),
             interfaces: Vec::new(),
@@ -200,10 +196,8 @@ impl App {
             self.firewall_rules.clear();
             self.neighbors.clear();
             self.logs.clear();
-            self.rx_history.clear();
-            self.tx_history.clear();
-            self.current_rx_bps = 0;
-            self.current_tx_bps = 0;
+            self.rx_histories.clear();
+            self.tx_histories.clear();
             self.last_traffic_sample = None;
             self.selected_index = 0;
 
@@ -314,8 +308,8 @@ impl App {
         if let Some(res) = system { if !res.board_name.is_empty() || !res.version.is_empty() { self.system_resource = res; } }
         if let Some(ifaces) = interfaces {
             if !ifaces.is_empty() {
+                self.interfaces = ifaces.clone();
                 self.update_traffic_history(&ifaces);
-                self.interfaces = ifaces;
             }
         }
         if let Some(addrs) = ip_addresses { if !addrs.is_empty() { self.ip_addresses = addrs; } }
@@ -331,41 +325,40 @@ impl App {
 
     fn update_traffic_history(&mut self, ifaces: &[Interface]) {
         let now = Instant::now();
-        let selected_iface_name = self.filtered_interfaces()
-            .get(self.selected_index)
-            .map(|i| i.name.clone())
-            .unwrap_or_else(|| ifaces.first().map(|i| i.name.clone()).unwrap_or_default());
 
         if let Some((last_time, last_map)) = &self.last_traffic_sample {
             let elapsed_secs = now.duration_since(*last_time).as_secs_f64().max(0.1);
 
-            if let Some(current_iface) = ifaces.iter().find(|i| i.name == selected_iface_name) {
-                if let Some(&(prev_rx, prev_tx)) = last_map.get(&selected_iface_name) {
-                    let delta_rx = current_iface.rx_byte.saturating_sub(prev_rx);
-                    let delta_tx = current_iface.tx_byte.saturating_sub(prev_tx);
+            for iface in ifaces {
+                if let Some(&(prev_rx, prev_tx)) = last_map.get(&iface.name) {
+                    let delta_rx = iface.rx_byte.saturating_sub(prev_rx);
+                    let delta_tx = iface.tx_byte.saturating_sub(prev_tx);
 
                     let calc_rx_bps = ((delta_rx as f64 * 8.0) / elapsed_secs) as u64;
                     let calc_tx_bps = ((delta_tx as f64 * 8.0) / elapsed_secs) as u64;
 
-                    self.current_rx_bps = calc_rx_bps;
-                    self.current_tx_bps = calc_tx_bps;
+                    let rx_list = self.rx_histories.entry(iface.name.clone()).or_default();
+                    rx_list.push(calc_rx_bps);
+                    while rx_list.len() > 30 {
+                        rx_list.remove(0);
+                    }
 
-                    self.rx_history.push(self.current_rx_bps);
-                    self.tx_history.push(self.current_tx_bps);
+                    let tx_list = self.tx_histories.entry(iface.name.clone()).or_default();
+                    tx_list.push(calc_tx_bps);
+                    while tx_list.len() > 30 {
+                        tx_list.remove(0);
+                    }
                 }
             }
         } else {
-            // Initial sample: push starting points
-            self.rx_history.push(0);
-            self.tx_history.push(0);
-        }
+            // Initial sample registration
+            for iface in ifaces {
+                let rx_list = self.rx_histories.entry(iface.name.clone()).or_default();
+                rx_list.push(0);
 
-        // Limit history buffer to 30 data points
-        while self.rx_history.len() > 30 {
-            self.rx_history.remove(0);
-        }
-        while self.tx_history.len() > 30 {
-            self.tx_history.remove(0);
+                let tx_list = self.tx_histories.entry(iface.name.clone()).or_default();
+                tx_list.push(0);
+            }
         }
 
         let mut new_map = HashMap::new();
@@ -396,8 +389,8 @@ impl App {
 
         if let Ok(ifaces) = self.client.fetch_interfaces().await {
             if !ifaces.is_empty() {
+                self.interfaces = ifaces.clone();
                 self.update_traffic_history(&ifaces);
-                self.interfaces = ifaces;
             }
         }
 

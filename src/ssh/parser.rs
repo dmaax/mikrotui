@@ -245,6 +245,32 @@ pub fn parse_interfaces(raw: &str) -> Vec<Interface> {
             .cloned()
             .unwrap_or_else(|| "ether".to_string());
 
+        let rx_byte = map.get("rx-byte")
+            .or_else(|| map.get("rx-bytes"))
+            .or_else(|| map.get("bytes-received"))
+            .or_else(|| map.get("rx-byte-count"))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
+        let tx_byte = map.get("tx-byte")
+            .or_else(|| map.get("tx-bytes"))
+            .or_else(|| map.get("bytes-sent"))
+            .or_else(|| map.get("tx-byte-count"))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
+        let rx_packet = map.get("rx-packet")
+            .or_else(|| map.get("rx-packets"))
+            .or_else(|| map.get("packets-received"))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
+        let tx_packet = map.get("tx-packet")
+            .or_else(|| map.get("tx-packets"))
+            .or_else(|| map.get("packets-sent"))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
         Interface {
             id: map.get(".id").cloned().unwrap_or_default(),
             name,
@@ -253,10 +279,10 @@ pub fn parse_interfaces(raw: &str) -> Vec<Interface> {
             mac_address: map.get("mac-address").or_else(|| map.get("orig-mac-address")).cloned().unwrap_or_default(),
             running: map.get("running").map(|v| v == "yes" || v == "true" || v == "R").unwrap_or(false),
             disabled: map.get("disabled").map(|v| v == "yes" || v == "true" || v == "X").unwrap_or(false),
-            rx_byte: map.get("rx-byte").and_then(|v| v.parse().ok()).unwrap_or(0),
-            tx_byte: map.get("tx-byte").and_then(|v| v.parse().ok()).unwrap_or(0),
-            rx_packet: map.get("rx-packet").and_then(|v| v.parse().ok()).unwrap_or(0),
-            tx_packet: map.get("tx-packet").and_then(|v| v.parse().ok()).unwrap_or(0),
+            rx_byte,
+            tx_byte,
+            rx_packet,
+            tx_packet,
             comment: map.get("comment").cloned().unwrap_or_default(),
         }
     }).collect()

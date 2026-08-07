@@ -69,11 +69,18 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
 
     f.render_widget(table, chunks[0]);
 
-    // Bottom Traffic Sparklines Block
+    // Bottom Traffic Sparklines Block for Selected Interface
     let selected_name = interfaces
         .get(app.selected_index)
         .map(|i| i.name.as_str())
         .unwrap_or("ether1");
+
+    let empty_vec = Vec::new();
+    let rx_history = app.rx_histories.get(selected_name).unwrap_or(&empty_vec);
+    let tx_history = app.tx_histories.get(selected_name).unwrap_or(&empty_vec);
+
+    let current_rx_bps = rx_history.last().copied().unwrap_or(0);
+    let current_tx_bps = tx_history.last().copied().unwrap_or(0);
 
     let sparkline_block = Block::default()
         .borders(Borders::ALL)
@@ -98,7 +105,7 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(sparkline_block, chunks[1]);
 
     // 1. Rx Inbound Sparkline Panel
-    let rx_title = format!(" 📥 Rx (Inbound): {} ", format_bps(app.current_rx_bps));
+    let rx_title = format!(" 📥 Rx (Inbound): {} ", format_bps(current_rx_bps));
     let rx_block = Block::default()
         .borders(Borders::ALL)
         .border_style(t.border)
@@ -106,13 +113,13 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
 
     let rx_sparkline = Sparkline::default()
         .block(rx_block)
-        .data(&app.rx_history)
+        .data(rx_history)
         .style(t.success);
 
     f.render_widget(rx_sparkline, sparkline_chunks[0]);
 
     // 2. Tx Outbound Sparkline Panel
-    let tx_title = format!(" 📤 Tx (Outbound): {} ", format_bps(app.current_tx_bps));
+    let tx_title = format!(" 📤 Tx (Outbound): {} ", format_bps(current_tx_bps));
     let tx_block = Block::default()
         .borders(Borders::ALL)
         .border_style(t.border)
@@ -120,7 +127,7 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
 
     let tx_sparkline = Sparkline::default()
         .block(tx_block)
-        .data(&app.tx_history)
+        .data(tx_history)
         .style(t.title);
 
     f.render_widget(tx_sparkline, sparkline_chunks[1]);
