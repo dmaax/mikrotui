@@ -307,7 +307,31 @@ async fn run_app(
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                // 1. Help Modal Handler (?)
+                // 1. Quick Host Switcher Modal Handler (Ctrl+O)
+                if app.show_host_switch_modal {
+                    match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            if app.host_switch_selected > 0 {
+                                app.host_switch_selected -= 1;
+                            }
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if app.host_switch_selected + 1 < app.available_hosts.len() {
+                                app.host_switch_selected += 1;
+                            }
+                        }
+                        KeyCode::Enter => {
+                            app.switch_host(app.host_switch_selected, tx.clone());
+                        }
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            app.show_host_switch_modal = false;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                // 2. Help Modal Handler (?)
                 if app.show_help_modal {
                     match key.code {
                         KeyCode::Enter | KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
@@ -318,7 +342,7 @@ async fn run_app(
                     continue;
                 }
 
-                // 2. Ping Modal Handler
+                // 3. Ping Modal Handler
                 match &mut app.ping_state {
                     PingState::InputtingTarget { input } => {
                         match key.code {
@@ -357,7 +381,7 @@ async fn run_app(
                     PingState::Inactive => {}
                 }
 
-                // 3. Detail Modal Handler
+                // 4. Detail Modal Handler
                 if app.show_detail_modal {
                     match key.code {
                         KeyCode::Enter | KeyCode::Esc | KeyCode::Char('q') => {
@@ -368,7 +392,7 @@ async fn run_app(
                     continue;
                 }
 
-                // 4. Main Navigation Handler
+                // 5. Main Navigation Handler
                 match app.input_mode {
                     InputMode::Normal => match (key.code, key.modifiers) {
                         // Quit
@@ -378,6 +402,11 @@ async fn run_app(
                         // Detail Modal (Enter)
                         (KeyCode::Enter, _) => {
                             app.show_detail_modal = true;
+                        }
+
+                        // Quick Host Switcher Modal (Ctrl+O)
+                        (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
+                            app.open_host_switch_prompt();
                         }
 
                         // Help Modal (?)

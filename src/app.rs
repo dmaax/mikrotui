@@ -1,3 +1,4 @@
+use crate::config::{AppConfig, HostConfig};
 use crate::models::*;
 use crate::ssh::{RouterClient, SshConfig};
 use crate::ui::theme::Theme;
@@ -88,6 +89,9 @@ pub struct App {
     pub theme: Theme,
     pub show_detail_modal: bool,
     pub show_help_modal: bool,
+    pub show_host_switch_modal: bool,
+    pub host_switch_selected: usize,
+    pub available_hosts: Vec<HostConfig>,
     pub ping_state: PingState,
 
     // Data models
@@ -115,6 +119,9 @@ impl App {
             theme: Theme::winbox_dark(),
             show_detail_modal: false,
             show_help_modal: false,
+            show_host_switch_modal: false,
+            host_switch_selected: 0,
+            available_hosts: Vec::new(),
             ping_state: PingState::Inactive,
             system_resource: SystemResource::default(),
             interfaces: Vec::new(),
@@ -125,6 +132,44 @@ impl App {
             logs: Vec::new(),
             status_message: "Connected. SAFE MODE ENABLED BY DEFAULT (Read-Only)".to_string(),
             is_loading: false,
+        }
+    }
+
+    pub fn open_host_switch_prompt(&mut self) {
+        if let Ok(config) = AppConfig::load() {
+            self.available_hosts = config.hosts;
+        }
+        self.host_switch_selected = 0;
+        self.show_host_switch_modal = true;
+    }
+
+    pub fn switch_host(&mut self, idx: usize, tx: mpsc::Sender<AppEvent>) {
+        if let Some(host_cfg) = self.available_hosts.get(idx).cloned() {
+            let new_ssh_config = SshConfig {
+                host: host_cfg.host.clone(),
+                port: host_cfg.port,
+                user: host_cfg.user.clone(),
+                pass: host_cfg.get_password(),
+                key_path: None,
+                demo_mode: false,
+            };
+
+            self.client = RouterClient::new(new_ssh_config);
+            self.show_host_switch_modal = false;
+            self.status_message = format!("Connecting to router [{}] ({})...", host_cfg.name, host_cfg.host);
+
+            // Reset current view models
+            self.system_resource = SystemResource::default();
+            self.interfaces.clear();
+            self.ip_addresses.clear();
+            self.ip_routes.clear();
+            self.dhcp_leases.clear();
+            self.firewall_rules.clear();
+            self.logs.clear();
+            self.selected_index = 0;
+
+            // Trigger background reload from new host
+            self.trigger_background_reload(tx);
         }
     }
 

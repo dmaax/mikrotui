@@ -1,5 +1,6 @@
 pub mod header;
 pub mod help_modal;
+pub mod host_switch_modal;
 pub mod modal;
 pub mod ping_modal;
 pub mod sidebar;
@@ -60,4 +61,7 @@ pub fn render(f: &mut Frame, app: &App) {
 
     // Help & Keyboard Shortcuts Modal
     help_modal::render_help_modal(f, app);
+
+    // Quick Host Switcher Modal
+    host_switch_modal::render_host_switch_modal(f, app);
 }
