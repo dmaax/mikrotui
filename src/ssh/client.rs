@@ -168,8 +168,8 @@ impl RouterClient {
                     mac_address: "DC:2C:6E:01:A0:03".to_string(),
                     running: true,
                     disabled: false,
-                    rx_byte: 45019280,
-                    tx_byte: 120491820,
+                    rx_byte: 45019280 + (ticks * 100_000 % 500_000_000),
+                    tx_byte: 120491820 + (ticks * 80_000 % 200_000_000),
                     rx_packet: 54100,
                     tx_packet: 102400,
                     comment: "NAS & Server Port".to_string(),
@@ -182,8 +182,8 @@ impl RouterClient {
                     mac_address: "".to_string(),
                     running: true,
                     disabled: false,
-                    rx_byte: 5410928,
-                    tx_byte: 9104812,
+                    rx_byte: 5410928 + (ticks * 50_000 % 100_000_000),
+                    tx_byte: 9104812 + (ticks * 40_000 % 80_000_000),
                     rx_packet: 12900,
                     tx_packet: 20400,
                     comment: "Site-to-Site VPN".to_string(),
@@ -191,17 +191,18 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/interface print terse without-paging").await?;
-        let mut parsed = parser::parse_interfaces(&raw);
+        // Tenta obter métricas completas com contadores de bytes (stats/detail)
+        let raw_stats = self.exec_command("/interface print stats terse without-paging").await?;
+        let mut parsed = parser::parse_interfaces(&raw_stats);
 
-        if parsed.is_empty() {
+        if parsed.is_empty() || parsed.iter().all(|i| i.rx_byte == 0 && i.tx_byte == 0) {
             let raw_detail = self.exec_command("/interface print detail without-paging").await?;
             parsed = parser::parse_interfaces(&raw_detail);
         }
 
-        if parsed.is_empty() {
-            let raw_simple = self.exec_command("/interface print without-paging").await?;
-            parsed = parser::parse_interfaces(&raw_simple);
+        if parsed.is_empty() || parsed.iter().all(|i| i.rx_byte == 0 && i.tx_byte == 0) {
+            let raw_terse = self.exec_command("/interface print terse without-paging").await?;
+            parsed = parser::parse_interfaces(&raw_terse);
         }
 
         Ok(parsed)

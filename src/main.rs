@@ -288,33 +288,44 @@ async fn run_app(
     app: &mut App,
 ) -> Result<()> {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<app::AppEvent>(32);
+    let mut auto_refresh_interval = tokio::time::interval(Duration::from_secs(2));
 
     loop {
-        // Process background events from Tokio channel
-        while let Ok(event) = rx.try_recv() {
-            match event {
-                app::AppEvent::DataLoaded {
-                    system,
-                    interfaces,
-                    ip_addresses,
-                    ip_routes,
-                    dhcp_leases,
-                    firewall_rules,
-                    neighbors,
-                    logs,
-                } => {
-                    app.apply_loaded_data(system, interfaces, ip_addresses, ip_routes, dhcp_leases, firewall_rules, neighbors, logs);
-                }
-                app::AppEvent::PingFinished(result) => {
-                    app.status_message = format!("✅ Ping completed for {}: {}% loss", result.target, result.packet_loss_pct);
-                    app.ping_state = PingState::Completed { result };
+        // Handle Tokio channels and 2-second background auto-refresh
+        tokio::select! {
+            _ = auto_refresh_interval.tick() => {
+                if !app.is_loading {
+                    app.trigger_background_reload(tx.clone());
                 }
             }
+            event_opt = rx.recv() => {
+                if let Some(event) = event_opt {
+                    match event {
+                        app::AppEvent::DataLoaded {
+                            system,
+                            interfaces,
+                            ip_addresses,
+                            ip_routes,
+                            dhcp_leases,
+                            firewall_rules,
+                            neighbors,
+                            logs,
+                        } => {
+                            app.apply_loaded_data(system, interfaces, ip_addresses, ip_routes, dhcp_leases, firewall_rules, neighbors, logs);
+                        }
+                        app::AppEvent::PingFinished(result) => {
+                            app.status_message = format!("✅ Ping completed for {}: {}% loss", result.target, result.packet_loss_pct);
+                            app.ping_state = PingState::Completed { result };
+                        }
+                    }
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(50)) => {}
         }
 
         terminal.draw(|f| ui::render(f, app))?;
 
-        if event::poll(Duration::from_millis(100))? {
+        if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 // 1. Quick Host Switcher Modal Handler (Ctrl+O)
                 if app.show_host_switch_modal {
