@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 use russh::{client, ChannelMsg};
 use russh_keys::key;
@@ -127,6 +127,10 @@ impl RouterClient {
 
     pub async fn fetch_interfaces(&self) -> Result<Vec<Interface>> {
         if self.config.demo_mode {
+            let ticks = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+            let rx_sim = 1_458_920_412 + (ticks * 1_500_000 % 10_000_000_000);
+            let tx_sim = 349_102_488 + (ticks * 450_000 % 5_000_000_000);
+
             return Ok(vec![
                 Interface {
                     id: "0".to_string(),
@@ -136,8 +140,8 @@ impl RouterClient {
                     mac_address: "DC:2C:6E:01:A0:01".to_string(),
                     running: true,
                     disabled: false,
-                    rx_byte: 1458920412,
-                    tx_byte: 349102488,
+                    rx_byte: rx_sim,
+                    tx_byte: tx_sim,
                     rx_packet: 1284900,
                     tx_packet: 894100,
                     comment: "ISP Connection".to_string(),
@@ -150,8 +154,8 @@ impl RouterClient {
                     mac_address: "DC:2C:6E:01:A0:02".to_string(),
                     running: true,
                     disabled: false,
-                    rx_byte: 984021948,
-                    tx_byte: 1824091490,
+                    rx_byte: rx_sim / 2,
+                    tx_byte: tx_sim / 2,
                     rx_packet: 924100,
                     tx_packet: 1492000,
                     comment: "Local Bridge Trunk".to_string(),

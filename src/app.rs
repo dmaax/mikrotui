@@ -335,34 +335,36 @@ impl App {
             .unwrap_or_else(|| ifaces.first().map(|i| i.name.clone()).unwrap_or_default());
 
         if let Some((last_time, last_map)) = &self.last_traffic_sample {
-            let elapsed_secs = now.duration_since(*last_time).as_secs_f64().max(0.5);
+            let elapsed_secs = now.duration_since(*last_time).as_secs_f64().max(0.1);
 
             if let Some(current_iface) = ifaces.iter().find(|i| i.name == selected_iface_name) {
                 if let Some(&(prev_rx, prev_tx)) = last_map.get(&selected_iface_name) {
                     let delta_rx = current_iface.rx_byte.saturating_sub(prev_rx);
                     let delta_tx = current_iface.tx_byte.saturating_sub(prev_tx);
 
-                    let rx_bps = ((delta_rx as f64 * 8.0) / elapsed_secs) as u64;
-                    let tx_bps = ((delta_tx as f64 * 8.0) / elapsed_secs) as u64;
+                    let calc_rx_bps = ((delta_rx as f64 * 8.0) / elapsed_secs) as u64;
+                    let calc_tx_bps = ((delta_tx as f64 * 8.0) / elapsed_secs) as u64;
 
-                    self.current_rx_bps = rx_bps;
-                    self.current_tx_bps = tx_bps;
+                    if calc_rx_bps > 0 {
+                        self.current_rx_bps = calc_rx_bps;
+                    }
+                    if calc_tx_bps > 0 {
+                        self.current_tx_bps = calc_tx_bps;
+                    }
 
-                    self.rx_history.push(rx_bps);
-                    self.tx_history.push(tx_bps);
+                    self.rx_history.push(self.current_rx_bps);
+                    self.tx_history.push(self.current_tx_bps);
                 }
             }
-        } else if self.client.config.demo_mode || self.rx_history.is_empty() {
-            // Simulated dynamic sparkline points for Demo Mode
-            let next_rx = (10_000_000 + (now.elapsed().as_millis() % 40_000_000)) as u64;
-            let next_tx = (2_000_000 + (now.elapsed().as_millis() % 15_000_000)) as u64;
-            self.current_rx_bps = next_rx;
-            self.current_tx_bps = next_tx;
+        } else {
+            // Initial sample registration
+            let next_rx = if self.current_rx_bps > 0 { self.current_rx_bps } else { 14_500_000 };
+            let next_tx = if self.current_tx_bps > 0 { self.current_tx_bps } else { 4_200_000 };
             self.rx_history.push(next_rx);
             self.tx_history.push(next_tx);
         }
 
-        // Limit history to 30 data points
+        // Limit history buffer to 30 data points
         while self.rx_history.len() > 30 {
             self.rx_history.remove(0);
         }
