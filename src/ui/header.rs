@@ -18,10 +18,11 @@ pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
         ])
         .split(area);
 
-    // Left Title Block
+    // Left Title Block (version dynamically extracted from Cargo.toml at compile time)
+    let version_str = format!(" v{} ", env!("CARGO_PKG_VERSION"));
     let title_spans = vec![
         Span::styled(" MikroTUI ", t.title),
-        Span::styled(" v0.2.0 ", t.muted_text),
+        Span::styled(version_str, t.muted_text),
         Span::styled(" (WinBox TUI) ", t.accent.add_modifier(Modifier::BOLD)),
     ];
     let title_p = Paragraph::new(Line::from(title_spans))
