@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::models::*;
+use std::collections::HashMap;
 
 /// Remove códigos de escape ANSI (ex: cores de terminal \x1b[32m) e caracteres de controle \r
 pub fn strip_ansi_codes(input: &str) -> String {
@@ -35,7 +35,8 @@ pub fn parse_routeros_output(raw_input: &str) -> Vec<HashMap<String, String>> {
     }
 
     // Se for formato multilinha "key: value" (como no /system resource print do ROS v7)
-    let is_colon_multiline = lines.iter().all(|l| l.contains(':') && !l.contains('=')) || lines.iter().any(|l| l.starts_with("uptime:"));
+    let is_colon_multiline = lines.iter().all(|l| l.contains(':') && !l.contains('='))
+        || lines.iter().any(|l| l.starts_with("uptime:"));
 
     if is_colon_multiline {
         let mut map = HashMap::new();
@@ -58,7 +59,7 @@ pub fn parse_routeros_output(raw_input: &str) -> Vec<HashMap<String, String>> {
     let mut current_item: Option<HashMap<String, String>> = None;
 
     for line in lines {
-        let is_new_item = line.chars().next().map_or(false, |c| c.is_ascii_digit());
+        let is_new_item = line.chars().next().is_some_and(|c| c.is_ascii_digit());
 
         if is_new_item {
             if let Some(item) = current_item.take() {
@@ -73,11 +74,21 @@ pub fn parse_routeros_output(raw_input: &str) -> Vec<HashMap<String, String>> {
                 map.insert(".id".to_string(), parts[0].to_string());
                 if parts.len() > 1 && !parts[1].contains('=') {
                     let flags = parts[1];
-                    if flags.contains('R') { map.insert("running".to_string(), "yes".to_string()); }
-                    if flags.contains('X') { map.insert("disabled".to_string(), "yes".to_string()); }
-                    if flags.contains('D') { map.insert("dynamic".to_string(), "yes".to_string()); }
-                    if flags.contains('A') { map.insert("active".to_string(), "yes".to_string()); }
-                    if flags.contains('I') { map.insert("invalid".to_string(), "yes".to_string()); }
+                    if flags.contains('R') {
+                        map.insert("running".to_string(), "yes".to_string());
+                    }
+                    if flags.contains('X') {
+                        map.insert("disabled".to_string(), "yes".to_string());
+                    }
+                    if flags.contains('D') {
+                        map.insert("dynamic".to_string(), "yes".to_string());
+                    }
+                    if flags.contains('A') {
+                        map.insert("active".to_string(), "yes".to_string());
+                    }
+                    if flags.contains('I') {
+                        map.insert("invalid".to_string(), "yes".to_string());
+                    }
                 }
             }
 
@@ -171,7 +182,11 @@ fn parse_key_value_pairs(input: &str) -> Vec<(String, String)> {
 
 fn parse_tabular_output(output: &str) -> Vec<HashMap<String, String>> {
     let mut items = Vec::new();
-    let lines: Vec<&str> = output.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = output
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
 
     for line in lines {
         if line.starts_with("Flags:") || line.starts_with("#") {
@@ -182,11 +197,21 @@ fn parse_tabular_output(output: &str) -> Vec<HashMap<String, String>> {
             let mut map = HashMap::new();
             map.insert(".id".to_string(), parts[0].to_string());
 
-            if let Some(ip_idx) = parts.iter().enumerate().position(|(idx, p)| idx > 0 && p.contains('/')) {
+            if let Some(ip_idx) = parts
+                .iter()
+                .enumerate()
+                .position(|(idx, p)| idx > 0 && p.contains('/'))
+            {
                 for p in &parts[1..ip_idx] {
-                    if p.contains('D') { map.insert("dynamic".to_string(), "yes".to_string()); }
-                    if p.contains('X') { map.insert("disabled".to_string(), "yes".to_string()); }
-                    if p.contains('I') { map.insert("invalid".to_string(), "yes".to_string()); }
+                    if p.contains('D') {
+                        map.insert("dynamic".to_string(), "yes".to_string());
+                    }
+                    if p.contains('X') {
+                        map.insert("disabled".to_string(), "yes".to_string());
+                    }
+                    if p.contains('I') {
+                        map.insert("invalid".to_string(), "yes".to_string());
+                    }
                 }
 
                 map.insert("address".to_string(), parts[ip_idx].to_string());
@@ -199,9 +224,15 @@ fn parse_tabular_output(output: &str) -> Vec<HashMap<String, String>> {
                     map.insert("interface".to_string(), parts[ip_idx + 2].to_string());
                 }
             } else {
-                if parts.len() > 1 { map.insert("address".to_string(), parts[1].to_string()); }
-                if parts.len() > 2 { map.insert("network".to_string(), parts[2].to_string()); }
-                if parts.len() > 3 { map.insert("interface".to_string(), parts[3].to_string()); }
+                if parts.len() > 1 {
+                    map.insert("address".to_string(), parts[1].to_string());
+                }
+                if parts.len() > 2 {
+                    map.insert("network".to_string(), parts[2].to_string());
+                }
+                if parts.len() > 3 {
+                    map.insert("interface".to_string(), parts[3].to_string());
+                }
             }
 
             items.push(map);
@@ -215,15 +246,27 @@ pub fn parse_system_resource(raw: &str) -> SystemResource {
     let items = parse_routeros_output(raw);
     let mut res = SystemResource::default();
     if let Some(map) = items.first() {
-        res.uptime = map.get("uptime").cloned().unwrap_or_else(|| "0s".to_string());
-        res.version = map.get("version").cloned().unwrap_or_else(|| "N/A".to_string());
+        res.uptime = map
+            .get("uptime")
+            .cloned()
+            .unwrap_or_else(|| "0s".to_string());
+        res.version = map
+            .get("version")
+            .cloned()
+            .unwrap_or_else(|| "N/A".to_string());
         res.build_time = map.get("build-time").cloned().unwrap_or_default();
         res.free_memory = map.get("free-memory").cloned().unwrap_or_default();
         res.total_memory = map.get("total-memory").cloned().unwrap_or_default();
         res.cpu = map.get("cpu").cloned().unwrap_or_default();
-        res.cpu_count = map.get("cpu-count").cloned().unwrap_or_else(|| "1".to_string());
+        res.cpu_count = map
+            .get("cpu-count")
+            .cloned()
+            .unwrap_or_else(|| "1".to_string());
         res.cpu_frequency = map.get("cpu-frequency").cloned().unwrap_or_default();
-        res.cpu_load = map.get("cpu-load").and_then(|v| v.trim_end_matches('%').parse().ok()).unwrap_or(0);
+        res.cpu_load = map
+            .get("cpu-load")
+            .and_then(|v| v.trim_end_matches('%').parse().ok())
+            .unwrap_or(0);
         res.free_hdd_space = map.get("free-hdd-space").cloned().unwrap_or_default();
         res.total_hdd_space = map.get("total-hdd-space").cloned().unwrap_or_default();
         res.architecture_name = map.get("architecture-name").cloned().unwrap_or_default();
@@ -235,135 +278,226 @@ pub fn parse_system_resource(raw: &str) -> SystemResource {
 
 pub fn parse_interfaces(raw: &str) -> Vec<Interface> {
     let items = parse_routeros_output(raw);
-    items.into_iter().map(|map| {
-        let name = map.get("name")
-            .or_else(|| map.get("default-name"))
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string());
+    items
+        .into_iter()
+        .map(|map| {
+            let name = map
+                .get("name")
+                .or_else(|| map.get("default-name"))
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
 
-        let itype = map.get("type")
-            .cloned()
-            .unwrap_or_else(|| "ether".to_string());
+            let itype = map
+                .get("type")
+                .cloned()
+                .unwrap_or_else(|| "ether".to_string());
 
-        Interface {
-            id: map.get(".id").cloned().unwrap_or_default(),
-            name,
-            interface_type: itype,
-            mtu: map.get("mtu").or_else(|| map.get("actual-mtu")).cloned().unwrap_or_else(|| "1500".to_string()),
-            mac_address: map.get("mac-address").or_else(|| map.get("orig-mac-address")).cloned().unwrap_or_default(),
-            running: map.get("running").map(|v| v == "yes" || v == "true" || v == "R").unwrap_or(false),
-            disabled: map.get("disabled").map(|v| v == "yes" || v == "true" || v == "X").unwrap_or(false),
-            rx_byte: map.get("rx-byte").and_then(|v| v.parse().ok()).unwrap_or(0),
-            tx_byte: map.get("tx-byte").and_then(|v| v.parse().ok()).unwrap_or(0),
-            rx_packet: map.get("rx-packet").and_then(|v| v.parse().ok()).unwrap_or(0),
-            tx_packet: map.get("tx-packet").and_then(|v| v.parse().ok()).unwrap_or(0),
-            comment: map.get("comment").cloned().unwrap_or_default(),
-        }
-    }).collect()
+            Interface {
+                id: map.get(".id").cloned().unwrap_or_default(),
+                name,
+                interface_type: itype,
+                mtu: map
+                    .get("mtu")
+                    .or_else(|| map.get("actual-mtu"))
+                    .cloned()
+                    .unwrap_or_else(|| "1500".to_string()),
+                mac_address: map
+                    .get("mac-address")
+                    .or_else(|| map.get("orig-mac-address"))
+                    .cloned()
+                    .unwrap_or_default(),
+                running: map
+                    .get("running")
+                    .map(|v| v == "yes" || v == "true" || v == "R")
+                    .unwrap_or(false),
+                disabled: map
+                    .get("disabled")
+                    .map(|v| v == "yes" || v == "true" || v == "X")
+                    .unwrap_or(false),
+                rx_byte: map.get("rx-byte").and_then(|v| v.parse().ok()).unwrap_or(0),
+                tx_byte: map.get("tx-byte").and_then(|v| v.parse().ok()).unwrap_or(0),
+                rx_packet: map
+                    .get("rx-packet")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+                tx_packet: map
+                    .get("tx-packet")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+                comment: map.get("comment").cloned().unwrap_or_default(),
+            }
+        })
+        .collect()
 }
 
 pub fn parse_ip_addresses(raw: &str) -> Vec<IpAddress> {
     let items = parse_routeros_output(raw);
-    items.into_iter().filter_map(|map| {
-        let address = map.get("address")
-            .cloned()
-            .or_else(|| {
-                map.values().find(|v| v.contains('/') && (v.contains('.') || v.contains(':'))).cloned()
+    items
+        .into_iter()
+        .filter_map(|map| {
+            let address = map.get("address").cloned().or_else(|| {
+                map.values()
+                    .find(|v| v.contains('/') && (v.contains('.') || v.contains(':')))
+                    .cloned()
             })?;
 
-        let interface = map.get("interface")
-            .or_else(|| map.get("actual-interface"))
-            .cloned()
-            .unwrap_or_else(|| {
-                map.get("network").cloned().unwrap_or_default()
-            });
+            let interface = map
+                .get("interface")
+                .or_else(|| map.get("actual-interface"))
+                .cloned()
+                .unwrap_or_else(|| map.get("network").cloned().unwrap_or_default());
 
-        Some(IpAddress {
-            id: map.get(".id").cloned().unwrap_or_default(),
-            address,
-            network: map.get("network").cloned().unwrap_or_default(),
-            interface,
-            disabled: map.get("disabled").map(|v| v == "yes" || v == "true" || v == "X").unwrap_or(false),
-            dynamic: map.get("dynamic").map(|v| v == "yes" || v == "true" || v == "D").unwrap_or(false),
-            comment: map.get("comment").cloned().unwrap_or_default(),
+            Some(IpAddress {
+                id: map.get(".id").cloned().unwrap_or_default(),
+                address,
+                network: map.get("network").cloned().unwrap_or_default(),
+                interface,
+                disabled: map
+                    .get("disabled")
+                    .map(|v| v == "yes" || v == "true" || v == "X")
+                    .unwrap_or(false),
+                dynamic: map
+                    .get("dynamic")
+                    .map(|v| v == "yes" || v == "true" || v == "D")
+                    .unwrap_or(false),
+                comment: map.get("comment").cloned().unwrap_or_default(),
+            })
         })
-    }).collect()
+        .collect()
 }
 
 pub fn parse_ip_routes(raw: &str) -> Vec<IpRoute> {
     let items = parse_routeros_output(raw);
-    items.into_iter().map(|map| {
-        IpRoute {
+    items
+        .into_iter()
+        .map(|map| IpRoute {
             id: map.get(".id").cloned().unwrap_or_default(),
             dst_address: map.get("dst-address").cloned().unwrap_or_default(),
             gateway: map.get("gateway").cloned().unwrap_or_default(),
-            distance: map.get("distance").and_then(|v| v.parse().ok()).unwrap_or(1),
-            routing_table: map.get("routing-table").cloned().unwrap_or_else(|| "main".to_string()),
-            active: map.get("active").map(|v| v == "yes" || v == "true" || v == "A").unwrap_or(true),
-            dynamic: map.get("dynamic").map(|v| v == "yes" || v == "true" || v == "D").unwrap_or(false),
-            disabled: map.get("disabled").map(|v| v == "yes" || v == "true" || v == "X").unwrap_or(false),
+            distance: map
+                .get("distance")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1),
+            routing_table: map
+                .get("routing-table")
+                .cloned()
+                .unwrap_or_else(|| "main".to_string()),
+            active: map
+                .get("active")
+                .map(|v| v == "yes" || v == "true" || v == "A")
+                .unwrap_or(true),
+            dynamic: map
+                .get("dynamic")
+                .map(|v| v == "yes" || v == "true" || v == "D")
+                .unwrap_or(false),
+            disabled: map
+                .get("disabled")
+                .map(|v| v == "yes" || v == "true" || v == "X")
+                .unwrap_or(false),
             comment: map.get("comment").cloned().unwrap_or_default(),
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 pub fn parse_dhcp_leases(raw: &str) -> Vec<DhcpLease> {
     let items = parse_routeros_output(raw);
-    items.into_iter().map(|map| {
-        DhcpLease {
+    items
+        .into_iter()
+        .map(|map| DhcpLease {
             id: map.get(".id").cloned().unwrap_or_default(),
             address: map.get("address").cloned().unwrap_or_default(),
             mac_address: map.get("mac-address").cloned().unwrap_or_default(),
             host_name: map.get("host-name").cloned().unwrap_or_default(),
             server: map.get("server").cloned().unwrap_or_default(),
-            status: map.get("status").cloned().unwrap_or_else(|| "bound".to_string()),
+            status: map
+                .get("status")
+                .cloned()
+                .unwrap_or_else(|| "bound".to_string()),
             expires_after: map.get("expires-after").cloned().unwrap_or_default(),
-            dynamic: map.get("dynamic").map(|v| v == "yes" || v == "true").unwrap_or(false),
-            disabled: map.get("disabled").map(|v| v == "yes" || v == "true").unwrap_or(false),
-        }
-    }).collect()
+            dynamic: map
+                .get("dynamic")
+                .map(|v| v == "yes" || v == "true")
+                .unwrap_or(false),
+            disabled: map
+                .get("disabled")
+                .map(|v| v == "yes" || v == "true")
+                .unwrap_or(false),
+        })
+        .collect()
 }
 
 pub fn parse_firewall_rules(raw: &str) -> Vec<FirewallRule> {
     let items = parse_routeros_output(raw);
-    items.into_iter().map(|map| {
-        FirewallRule {
+    items
+        .into_iter()
+        .map(|map| FirewallRule {
             id: map.get(".id").cloned().unwrap_or_default(),
-            chain: map.get("chain").cloned().unwrap_or_else(|| "input".to_string()),
-            action: map.get("action").cloned().unwrap_or_else(|| "accept".to_string()),
+            chain: map
+                .get("chain")
+                .cloned()
+                .unwrap_or_else(|| "input".to_string()),
+            action: map
+                .get("action")
+                .cloned()
+                .unwrap_or_else(|| "accept".to_string()),
             src_address: map.get("src-address").cloned().unwrap_or_default(),
             dst_address: map.get("dst-address").cloned().unwrap_or_default(),
             protocol: map.get("protocol").cloned().unwrap_or_default(),
             dst_port: map.get("dst-port").cloned().unwrap_or_default(),
             bytes: map.get("bytes").and_then(|v| v.parse().ok()).unwrap_or(0),
             packets: map.get("packets").and_then(|v| v.parse().ok()).unwrap_or(0),
-            disabled: map.get("disabled").map(|v| v == "yes" || v == "true").unwrap_or(false),
+            disabled: map
+                .get("disabled")
+                .map(|v| v == "yes" || v == "true")
+                .unwrap_or(false),
             comment: map.get("comment").cloned().unwrap_or_default(),
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 pub fn parse_neighbors(raw: &str) -> Vec<Neighbor> {
     let items = parse_routeros_output(raw);
-    items.into_iter().map(|map| {
-        let interface = map.get("interface").cloned().unwrap_or_else(|| "unknown".to_string());
-        let identity = map.get("identity")
-            .or_else(|| map.get("system-caps"))
-            .or_else(|| map.get("system-description"))
-            .cloned()
-            .unwrap_or_else(|| "Unknown-Device".to_string());
+    items
+        .into_iter()
+        .map(|map| {
+            let interface = map
+                .get("interface")
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            let identity = map
+                .get("identity")
+                .or_else(|| map.get("system-caps"))
+                .or_else(|| map.get("system-description"))
+                .cloned()
+                .unwrap_or_else(|| "Unknown-Device".to_string());
 
-        Neighbor {
-            id: map.get(".id").cloned().unwrap_or_default(),
-            interface,
-            identity,
-            mac_address: map.get("mac-address").cloned().unwrap_or_default(),
-            ip_address: map.get("address").or_else(|| map.get("ip-address")).cloned().unwrap_or_default(),
-            platform: map.get("platform").cloned().unwrap_or_else(|| "MikroTik".to_string()),
-            board: map.get("board").or_else(|| map.get("board-name")).cloned().unwrap_or_default(),
-            version: map.get("version").or_else(|| map.get("software-version")).cloned().unwrap_or_default(),
-        }
-    }).collect()
+            Neighbor {
+                id: map.get(".id").cloned().unwrap_or_default(),
+                interface,
+                identity,
+                mac_address: map.get("mac-address").cloned().unwrap_or_default(),
+                ip_address: map
+                    .get("address")
+                    .or_else(|| map.get("ip-address"))
+                    .cloned()
+                    .unwrap_or_default(),
+                platform: map
+                    .get("platform")
+                    .cloned()
+                    .unwrap_or_else(|| "MikroTik".to_string()),
+                board: map
+                    .get("board")
+                    .or_else(|| map.get("board-name"))
+                    .cloned()
+                    .unwrap_or_default(),
+                version: map
+                    .get("version")
+                    .or_else(|| map.get("software-version"))
+                    .cloned()
+                    .unwrap_or_default(),
+            }
+        })
+        .collect()
 }
 
 pub fn parse_logs(raw: &str) -> Vec<LogEntry> {
@@ -414,7 +548,9 @@ pub fn parse_ping_output(target: &str, raw: &str) -> PingResult {
                 match k.as_str() {
                     "sent" => res.sent = v.parse().unwrap_or(0),
                     "received" => res.received = v.parse().unwrap_or(0),
-                    "packet-loss" => res.packet_loss_pct = v.trim_end_matches('%').parse().unwrap_or(0),
+                    "packet-loss" => {
+                        res.packet_loss_pct = v.trim_end_matches('%').parse().unwrap_or(0)
+                    }
                     "min-rtt" => res.min_rtt_ms = v.trim_end_matches("ms").parse().unwrap_or(0),
                     "avg-rtt" => res.avg_rtt_ms = v.trim_end_matches("ms").parse().unwrap_or(0),
                     "max-rtt" => res.max_rtt_ms = v.trim_end_matches("ms").parse().unwrap_or(0),
@@ -432,7 +568,11 @@ pub fn parse_ping_output(target: &str, raw: &str) -> PingResult {
                 let ttl = parts[3].parse::<u32>().unwrap_or(64);
                 let rtt_str = if parts.len() > 4 { parts[4] } else { "0ms" };
                 let rtt_ms = rtt_str.trim_end_matches("ms").parse::<u32>().unwrap_or(0);
-                let status = if parts.len() > 5 { parts[5].to_string() } else { "ok".to_string() };
+                let status = if parts.len() > 5 {
+                    parts[5].to_string()
+                } else {
+                    "ok".to_string()
+                };
 
                 seq_list.push(PingSeq {
                     seq,
@@ -450,7 +590,10 @@ pub fn parse_ping_output(target: &str, raw: &str) -> PingResult {
         res.sent = seq_list.len() as u32;
     }
     if res.received == 0 {
-        res.received = seq_list.iter().filter(|s| s.status == "ok" || s.rtt_ms > 0).count() as u32;
+        res.received = seq_list
+            .iter()
+            .filter(|s| s.status == "ok" || s.rtt_ms > 0)
+            .count() as u32;
     }
     res.sequences = seq_list;
     res

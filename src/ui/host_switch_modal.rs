@@ -1,3 +1,4 @@
+use crate::app::App;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::Modifier,
@@ -5,7 +6,6 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
     Frame,
 };
-use crate::app::App;
 
 pub fn render_host_switch_modal(f: &mut Frame, app: &App) {
     if !app.show_host_switch_modal {
@@ -25,11 +25,20 @@ pub fn render_host_switch_modal(f: &mut Frame, app: &App) {
     if app.available_hosts.is_empty() {
         let p = Paragraph::new(vec![
             Line::from(""),
-            Line::from(Span::styled(" ⚠️ No stored hosts found in ~/.config/mikrotui/config.json ", t.warning)),
+            Line::from(Span::styled(
+                " ⚠️ No stored hosts found in ~/.config/mikrotui/config.json ",
+                t.warning,
+            )),
             Line::from(""),
-            Line::from(Span::styled(" Use 'mikrotui host add' to register new router hosts. ", t.muted_text)),
+            Line::from(Span::styled(
+                " Use 'mikrotui host add' to register new router hosts. ",
+                t.muted_text,
+            )),
             Line::from(""),
-            Line::from(Span::styled(" (Press Esc or Ctrl+O to close) ", t.muted_text)),
+            Line::from(Span::styled(
+                " (Press Esc or Ctrl+O to close) ",
+                t.muted_text,
+            )),
         ])
         .block(block)
         .alignment(Alignment::Center);
@@ -38,14 +47,24 @@ pub fn render_host_switch_modal(f: &mut Frame, app: &App) {
         return;
     }
 
-    let header_cells = ["#", "Router Alias / Name", "IP Address / Host", "Port", "User"]
-        .iter()
-        .map(|h| Cell::from(*h).style(t.header_cell));
+    let header_cells = [
+        "#",
+        "Router Alias / Name",
+        "IP Address / Host",
+        "Port",
+        "User",
+    ]
+    .iter()
+    .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let rows = app.available_hosts.iter().enumerate().map(|(idx, h)| {
         let is_selected = idx == app.host_switch_selected;
-        let row_style = if is_selected { t.selected_row } else { t.normal_text };
+        let row_style = if is_selected {
+            t.selected_row
+        } else {
+            t.normal_text
+        };
 
         Row::new(vec![
             Cell::from(format!("{}", idx + 1)),
@@ -53,7 +72,8 @@ pub fn render_host_switch_modal(f: &mut Frame, app: &App) {
             Cell::from(h.host.as_str()).style(t.success),
             Cell::from(format!("{}", h.port)),
             Cell::from(h.user.as_str()),
-        ]).style(row_style)
+        ])
+        .style(row_style)
     });
 
     let table = Table::new(

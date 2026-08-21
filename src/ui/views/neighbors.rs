@@ -1,10 +1,10 @@
+use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
     widgets::{Block, Borders, Cell, Row, Table},
     Frame,
 };
-use crate::app::App;
 
 pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
@@ -27,7 +27,11 @@ pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
 
     let rows = neighbors.iter().enumerate().map(|(idx, n)| {
         let is_selected = idx == app.selected_index;
-        let row_style = if is_selected { t.selected_row } else { t.normal_text };
+        let row_style = if is_selected {
+            t.selected_row
+        } else {
+            t.normal_text
+        };
 
         Row::new(vec![
             Cell::from(format!("{}", idx + 1)),
@@ -41,18 +45,21 @@ pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
         .style(row_style)
     });
 
-    let title = format!(" 📡 Network Neighbors (MNDP/CDP/LLDP) [{}] ", neighbors.len());
+    let title = format!(
+        " 📡 Network Neighbors (MNDP/CDP/LLDP) [{}] ",
+        neighbors.len()
+    );
 
     let table = Table::new(
         rows,
         [
-            Constraint::Length(4),   // #
-            Constraint::Length(16),  // Interface
-            Constraint::Length(22),  // Identity
-            Constraint::Length(18),  // IP Address
-            Constraint::Length(20),  // MAC Address
-            Constraint::Length(18),  // Board
-            Constraint::Min(16),     // Version
+            Constraint::Length(4),  // #
+            Constraint::Length(16), // Interface
+            Constraint::Length(22), // Identity
+            Constraint::Length(18), // IP Address
+            Constraint::Length(20), // MAC Address
+            Constraint::Length(18), // Board
+            Constraint::Min(16),    // Version
         ],
     )
     .header(header)

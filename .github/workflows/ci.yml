@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to a PR makes the first run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: Format, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test (default features)
+        run: cargo test --all-targets
+
+      # The keyring backend is behind an optional feature, so the default run
+      # never compiles it.
+      - name: Test (keyring feature)
+        run: cargo test --all-targets --features keyring
+
+  cross-build:
+    name: Build ${{ matrix.os }}${{ matrix.features && ' (keyring)' || '' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        features: ['', 'keyring']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Each platform selects a different credential store behind cfg(), so a
+      # Linux-only pipeline would never compile the macOS or Windows one.
+      - name: Build
+        run: cargo build --locked ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+
+  audit:
+    name: Security advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+
+      # RUSTSEC-2023-0071 — Marvin attack, a timing sidechannel in `rsa`.
+      #
+      # Ignored because upstream has no fix: the advisory lists `patched = []`, and the
+      # crate reaches us transitively through russh, so there is no version to move to.
+      #
+      # It also does not apply to how MikroTUI uses RSA. The attack recovers a key by
+      # timing *private-key* decryption. MikroTUI is a client that authenticates with a
+      # password and never holds an RSA private key; RSA appears only to verify the
+      # router's host key signature, which is a public-key operation.
+      #
+      # Revisit if MikroTUI ever gains SSH key authentication.
+      #
+      # Unmaintained/unsound advisories (fxhash, paste, lru) are reported but do not
+      # fail the run: they arrive through ratatui and inquire and are not ours to fix.
+      # Any *vulnerability* other than the one ignored here fails the build.
+      - run: cargo audit --ignore RUSTSEC-2023-0071

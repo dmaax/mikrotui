@@ -1,11 +1,14 @@
+use crate::models::*;
+use crate::ssh::guard;
+use crate::ssh::hostkey::{self, HostKeyIssue, HostKeyPolicy, IssueSlot};
+use crate::ssh::parser;
 use anyhow::{anyhow, Result};
+use russh::keys::PublicKeyOrCertificate;
+use russh::{client, ChannelMsg};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use russh::{client, ChannelMsg};
-use russh_keys::key;
-use crate::models::*;
-use crate::ssh::parser;
 
 #[derive(Clone, Debug)]
 pub struct SshConfig {
@@ -16,6 +19,10 @@ pub struct SshConfig {
     #[allow(dead_code)]
     pub key_path: Option<String>,
     pub demo_mode: bool,
+    /// What to do when the server key is not yet in `known_hosts`.
+    pub host_key_policy: HostKeyPolicy,
+    /// `known_hosts` file to verify against. Defaults to `~/.ssh/known_hosts`.
+    pub known_hosts: Option<PathBuf>,
 }
 
 impl Default for SshConfig {
@@ -27,21 +34,52 @@ impl Default for SshConfig {
             pass: None,
             key_path: None,
             demo_mode: true,
+            host_key_policy: HostKeyPolicy::Strict,
+            known_hosts: None,
         }
     }
 }
 
-struct SshHandler;
+impl SshConfig {
+    pub fn known_hosts_path(&self) -> Result<PathBuf> {
+        self.known_hosts
+            .clone()
+            .or_else(hostkey::default_known_hosts_path)
+            .ok_or_else(|| anyhow!("could not determine a known_hosts path (no home directory)"))
+    }
+}
 
-#[async_trait::async_trait]
+/// Verifies the server key against `known_hosts` before any credential is sent.
+struct SshHandler {
+    host: String,
+    port: u16,
+    policy: HostKeyPolicy,
+    known_hosts: PathBuf,
+    issue: IssueSlot,
+}
+
 impl client::Handler for SshHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &key::PublicKey,
+        server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        Ok(true) // Confia na chave do servidor MikroTik
+        // Certificate-based host keys would need their CA validated, which MikroTUI
+        // does not implement; RouterOS presents a plain key. Refuse anything else
+        // rather than let it through unverified.
+        let PublicKeyOrCertificate::PublicKey { key, .. } = server_public_key else {
+            return Ok(false);
+        };
+
+        Ok(hostkey::verify(
+            &self.host,
+            self.port,
+            key,
+            self.policy,
+            &self.known_hosts,
+            &self.issue,
+        ))
     }
 }
 
@@ -50,6 +88,10 @@ pub struct RouterClient {
     pub config: SshConfig,
     pub is_connected: Arc<Mutex<bool>>,
     session: Arc<Mutex<Option<client::Handle<SshHandler>>>>,
+    /// Set once a session has completed host key verification.
+    host_key_verified: Arc<Mutex<bool>>,
+    /// Why the last connection attempt failed verification, if that is why it failed.
+    last_host_key_issue: Arc<Mutex<Option<HostKeyIssue>>>,
 }
 
 impl RouterClient {
@@ -58,13 +100,24 @@ impl RouterClient {
             config,
             is_connected: Arc::new(Mutex::new(false)),
             session: Arc::new(Mutex::new(None)),
+            host_key_verified: Arc::new(Mutex::new(false)),
+            last_host_key_issue: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Whether the current session's host key was matched against `known_hosts`.
+    pub async fn host_key_verified(&self) -> bool {
+        *self.host_key_verified.lock().await
+    }
+
+    /// Verification failure from the most recent [`RouterClient::connect`] call.
+    pub async fn last_host_key_issue(&self) -> Option<HostKeyIssue> {
+        self.last_host_key_issue.lock().await.clone()
     }
 
     pub async fn connect(&self) -> Result<()> {
         if self.config.demo_mode {
-            let mut conn_lock = self.is_connected.lock().await;
-            *conn_lock = true;
+            *self.is_connected.lock().await = true;
             return Ok(());
         }
 
@@ -74,26 +127,54 @@ impl RouterClient {
         });
 
         let addr = format!("{}:{}", self.config.host, self.config.port);
-        let mut handle = tokio::time::timeout(
+        let issue: IssueSlot = Arc::new(std::sync::Mutex::new(None));
+        let handler = SshHandler {
+            host: self.config.host.clone(),
+            port: self.config.port,
+            policy: self.config.host_key_policy,
+            known_hosts: self.config.known_hosts_path()?,
+            issue: Arc::clone(&issue),
+        };
+
+        let connected = tokio::time::timeout(
             Duration::from_secs(10),
-            client::connect(config, addr.as_str(), SshHandler),
+            client::connect(config, addr.as_str(), handler),
         )
         .await
-        .map_err(|_| anyhow!("Tempo limite de conexão SSH excedido ao tentar conectar em {}", addr))??;
+        .map_err(|_| anyhow!("SSH connection to {addr} timed out"))?;
+
+        let recorded = issue.lock().ok().and_then(|g| g.clone());
+        *self.last_host_key_issue.lock().await = recorded.clone();
+
+        let mut handle = match connected {
+            Ok(handle) => handle,
+            Err(err) => {
+                // A rejected host key surfaces here as a generic transport failure;
+                // replace it with the specific reason the handler recorded.
+                return match recorded {
+                    Some(issue) => Err(anyhow!(issue)),
+                    None => Err(anyhow!("could not connect to {addr}: {err}")),
+                };
+            }
+        };
+
+        // Reaching this point means check_server_key returned true.
+        *self.host_key_verified.lock().await = true;
 
         let pass = self.config.pass.as_deref().unwrap_or("");
         let auth_res = handle
             .authenticate_password(&self.config.user, pass)
             .await?;
 
-        if !auth_res {
-            return Err(anyhow!("Falha na autenticação SSH para usuário '{}' em {}", self.config.user, addr));
+        if !auth_res.success() {
+            return Err(anyhow!(
+                "SSH authentication failed for user '{}' at {addr}",
+                self.config.user
+            ));
         }
 
-        let mut conn_lock = self.is_connected.lock().await;
-        *conn_lock = true;
-        let mut sess_lock = self.session.lock().await;
-        *sess_lock = Some(handle);
+        *self.is_connected.lock().await = true;
+        *self.session.lock().await = Some(handle);
 
         Ok(())
     }
@@ -187,11 +268,15 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/interface print terse without-paging").await?;
+        let raw = self
+            .exec_command("/interface print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_interfaces(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/interface print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/interface print detail without-paging")
+                .await?;
             parsed = parser::parse_interfaces(&raw_detail);
         }
 
@@ -236,16 +321,22 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip address print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip address print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_ip_addresses(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip address print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip address print detail without-paging")
+                .await?;
             parsed = parser::parse_ip_addresses(&raw_detail);
         }
 
         if parsed.is_empty() {
-            let raw_simple = self.exec_command("/ip address print without-paging").await?;
+            let raw_simple = self
+                .exec_command("/ip address print without-paging")
+                .await?;
             parsed = parser::parse_ip_addresses(&raw_simple);
         }
 
@@ -291,11 +382,15 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip route print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip route print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_ip_routes(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip route print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip route print detail without-paging")
+                .await?;
             parsed = parser::parse_ip_routes(&raw_detail);
         }
 
@@ -346,16 +441,22 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip dhcp-server lease print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip dhcp-server lease print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_dhcp_leases(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip dhcp-server lease print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip dhcp-server lease print detail without-paging")
+                .await?;
             parsed = parser::parse_dhcp_leases(&raw_detail);
         }
 
         if parsed.is_empty() {
-            let raw_simple = self.exec_command("/ip dhcp-server lease print without-paging").await?;
+            let raw_simple = self
+                .exec_command("/ip dhcp-server lease print without-paging")
+                .await?;
             parsed = parser::parse_dhcp_leases(&raw_simple);
         }
 
@@ -407,16 +508,22 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip firewall filter print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip firewall filter print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_firewall_rules(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip firewall filter print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip firewall filter print detail without-paging")
+                .await?;
             parsed = parser::parse_firewall_rules(&raw_detail);
         }
 
         if parsed.is_empty() {
-            let raw_simple = self.exec_command("/ip firewall filter print without-paging").await?;
+            let raw_simple = self
+                .exec_command("/ip firewall filter print without-paging")
+                .await?;
             parsed = parser::parse_firewall_rules(&raw_simple);
         }
 
@@ -459,16 +566,22 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip neighbor print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip neighbor print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_neighbors(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip neighbor print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip neighbor print detail without-paging")
+                .await?;
             parsed = parser::parse_neighbors(&raw_detail);
         }
 
         if parsed.is_empty() {
-            let raw_simple = self.exec_command("/ip neighbor print without-paging").await?;
+            let raw_simple = self
+                .exec_command("/ip neighbor print without-paging")
+                .await?;
             parsed = parser::parse_neighbors(&raw_simple);
         }
 
@@ -501,7 +614,8 @@ impl RouterClient {
                 LogEntry {
                     time: "14:13:00".to_string(),
                     topics: "system,info,safe-mode".to_string(),
-                    message: "Safe Mode active for session (Read-Only Mode Enforcement)".to_string(),
+                    message: "read-only session opened (no write commands will be sent)"
+                        .to_string(),
                 },
             ]);
         }
@@ -521,11 +635,46 @@ impl RouterClient {
                 avg_rtt_ms: 11,
                 max_rtt_ms: 14,
                 sequences: vec![
-                    PingSeq { seq: 0, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 10, status: "ok".to_string() },
-                    PingSeq { seq: 1, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 12, status: "ok".to_string() },
-                    PingSeq { seq: 2, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 11, status: "ok".to_string() },
-                    PingSeq { seq: 3, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 8, status: "ok".to_string() },
-                    PingSeq { seq: 4, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 14, status: "ok".to_string() },
+                    PingSeq {
+                        seq: 0,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 10,
+                        status: "ok".to_string(),
+                    },
+                    PingSeq {
+                        seq: 1,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 12,
+                        status: "ok".to_string(),
+                    },
+                    PingSeq {
+                        seq: 2,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 11,
+                        status: "ok".to_string(),
+                    },
+                    PingSeq {
+                        seq: 3,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 8,
+                        status: "ok".to_string(),
+                    },
+                    PingSeq {
+                        seq: 4,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 14,
+                        status: "ok".to_string(),
+                    },
                 ],
                 raw_output: "Demo Mode Ping".to_string(),
             });
@@ -537,14 +686,7 @@ impl RouterClient {
     }
 
     pub async fn exec_command(&self, cmd: &str) -> Result<String> {
-        let trimmed = cmd.trim();
-        let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-
-        for t in tokens {
-            if t == "add" || t == "set" || t == "remove" || t == "enable" || t == "disable" {
-                return Err(anyhow!("READ-ONLY ENFORCED: Write operations are disabled in MikroTUI Phase 1!"));
-            }
-        }
+        guard::ensure_read_only(cmd).map_err(|e| anyhow!(e))?;
 
         match self.try_exec_command(cmd).await {
             Ok(output) if !output.is_empty() => Ok(output),
@@ -568,7 +710,7 @@ impl RouterClient {
         let mut sess_guard = self.session.lock().await;
         let handle = sess_guard
             .as_mut()
-            .ok_or_else(|| anyhow!("Sessão SSH não foi inicializada"))?;
+            .ok_or_else(|| anyhow!("SSH session is not initialised"))?;
 
         let mut channel = handle.channel_open_session().await?;
         channel.exec(true, cmd).await?;

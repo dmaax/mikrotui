@@ -1,6 +1,7 @@
 mod app;
 mod config;
 mod models;
+mod secrets;
 mod ssh;
 mod ui;
 mod wizard;
@@ -13,14 +14,14 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{io, time::Duration};
+use std::{io, path::PathBuf, time::Duration};
 
 use app::{App, InputMode, PingState};
 use config::AppConfig;
-use ssh::{RouterClient, SshConfig};
+use ssh::{HostKeyIssue, HostKeyPolicy, RouterClient, SshConfig};
 
 #[derive(Parser, Debug)]
-#[command(name = "mikrotui", version = env!("CARGO_PKG_VERSION"), about = "WinBox TUI for MikroTik via SSH (Read-Only with Safe Mode)")]
+#[command(name = "mikrotui", version = env!("CARGO_PKG_VERSION"), about = "WinBox-style TUI for MikroTik RouterOS over SSH (read-only)")]
 struct CliArgs {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -37,9 +38,21 @@ struct CliArgs {
     #[arg(short, long)]
     user: Option<String>,
 
-    /// SSH Password
+    /// SSH password (visible in `ps` and shell history — prefer --password-stdin)
     #[arg(short = 'P', long)]
     password: Option<String>,
+
+    /// Read the SSH password from stdin, e.g. `pass show router | mikrotui --password-stdin`
+    #[arg(long, conflicts_with = "password")]
+    password_stdin: bool,
+
+    /// Record an unknown host key on first connection instead of refusing it
+    #[arg(long)]
+    accept_new_hostkey: bool,
+
+    /// known_hosts file to verify the router against [default: ~/.ssh/known_hosts]
+    #[arg(long, value_name = "PATH")]
+    known_hosts: Option<PathBuf>,
 
     /// Run in Demo Mode
     #[arg(short, long)]
@@ -84,6 +97,8 @@ enum HostCommands {
     Add,
     /// List stored hosts
     List,
+    /// Move passwords obfuscated in config.json into the OS keyring
+    Migrate,
 }
 
 #[tokio::main]
@@ -102,8 +117,16 @@ async fn main() -> Result<()> {
                     wizard::run_list_hosts()?;
                     return Ok(());
                 }
+                HostCommands::Migrate => {
+                    wizard::run_migrate_secrets()?;
+                    return Ok(());
+                }
             },
-            Commands::Dump { resource, format, demo } => {
+            Commands::Dump {
+                resource,
+                format,
+                demo,
+            } => {
                 run_dump_command(&cli, resource, format, *demo).await?;
                 return Ok(());
             }
@@ -115,12 +138,16 @@ async fn main() -> Result<()> {
     }
 
     // 2. Normal TUI mode
-    let ssh_config = determine_ssh_config(&cli)?;
-
-    let ssh_config = match ssh_config {
+    let ssh_config = match determine_ssh_config(&cli, true)? {
         Some(cfg) => cfg,
         None => return Ok(()),
     };
+
+    // Connect *before* entering raw mode. Host key acceptance and password prompts need
+    // a usable terminal, and a failure here should print a readable error rather than
+    // leaving the user staring at an empty TUI.
+    let client = connect_interactively(ssh_config).await?;
+    let verified = client.host_key_verified().await;
 
     // Terminal initialization
     enable_raw_mode()?;
@@ -130,7 +157,7 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // App state
-    let mut app = App::new(ssh_config);
+    let mut app = App::with_client(client, verified);
     let _ = app.load_all_data().await;
 
     // Main event loop
@@ -148,11 +175,84 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run_dump_command(cli: &CliArgs, resource: &str, format: &str, force_demo: bool) -> Result<()> {
-    let mut ssh_config = determine_ssh_config(cli)?.ok_or_else(|| anyhow!("No host configuration selected"))?;
-    if force_demo {
-        ssh_config.demo_mode = true;
+/// Connect, resolving host key and password questions interactively.
+///
+/// An unknown host key is shown with its fingerprint and accepted only if the user says
+/// so; a *changed* key is always fatal and is never offered for acceptance.
+async fn connect_interactively(mut ssh_config: SshConfig) -> Result<RouterClient> {
+    if ssh_config.demo_mode {
+        let client = RouterClient::new(ssh_config);
+        client.connect().await?;
+        return Ok(client);
     }
+
+    loop {
+        let client = RouterClient::new(ssh_config.clone());
+        match client.connect().await {
+            Ok(()) => return Ok(client),
+            Err(err) => {
+                // Ask about the host key only when that is genuinely what failed.
+                let Some(issue) = client.last_host_key_issue().await else {
+                    return Err(err);
+                };
+
+                match issue {
+                    HostKeyIssue::Changed { .. } => {
+                        return Err(anyhow!("{issue}"));
+                    }
+                    HostKeyIssue::Unknown {
+                        ref host,
+                        port,
+                        ref key_type,
+                        ref fingerprint,
+                    } => {
+                        println!(
+                            "\n🔑 The authenticity of host '{host}:{port}' cannot be established."
+                        );
+                        println!("   {key_type} key fingerprint is {fingerprint}");
+                        println!("   Verify it on the router with: /ip ssh print\n");
+
+                        // Without a terminal there is nobody to answer, and inquire's own
+                        // "not a TTY" error says nothing about how to proceed. Report the
+                        // issue instead: it names --accept-new-hostkey.
+                        let accept = match inquire::Confirm::new(
+                            "Accept this key and add it to known_hosts?",
+                        )
+                        .with_default(false)
+                        .prompt()
+                        {
+                            Ok(answer) => answer,
+                            Err(inquire::InquireError::NotTTY) => return Err(anyhow!("{issue}")),
+                            Err(e) => return Err(e.into()),
+                        };
+
+                        if !accept {
+                            return Err(anyhow!("host key rejected; not connecting"));
+                        }
+
+                        ssh_config.host_key_policy = HostKeyPolicy::AcceptNew;
+                        // Loop and retry, this time recording the key.
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn run_dump_command(
+    cli: &CliArgs,
+    resource: &str,
+    format: &str,
+    force_demo: bool,
+) -> Result<()> {
+    // `--demo` on the subcommand has to be honoured *before* host selection, otherwise
+    // it still walks into the interactive first-run wizard.
+    let ssh_config = if force_demo || cli.demo {
+        SshConfig::default()
+    } else {
+        determine_ssh_config(cli, false)?
+            .ok_or_else(|| anyhow!("No host configuration selected"))?
+    };
 
     let client = RouterClient::new(ssh_config);
     client.connect().await?;
@@ -233,13 +333,23 @@ async fn run_dump_command(cli: &CliArgs, resource: &str, format: &str, force_dem
 }
 
 async fn run_exec_command(cli: &CliArgs, command: &str, force_demo: bool) -> Result<()> {
-    let mut ssh_config = determine_ssh_config(cli)?.ok_or_else(|| anyhow!("No host configuration selected"))?;
-    if force_demo {
-        ssh_config.demo_mode = true;
-    }
+    // Reject a write command before opening a connection, so `mikrotui exec` cannot even
+    // be used to probe which credentials a router accepts for a mutating operation.
+    ssh::guard::ensure_read_only(command).map_err(|e| anyhow!(e))?;
 
-    let client = RouterClient::new(ssh_config);
-    client.connect().await?;
+    let ssh_config = if force_demo || cli.demo {
+        SshConfig::default()
+    } else {
+        determine_ssh_config(cli, true)?.ok_or_else(|| anyhow!("No host configuration selected"))?
+    };
+
+    let client = if ssh_config.demo_mode {
+        let c = RouterClient::new(ssh_config);
+        c.connect().await?;
+        c
+    } else {
+        connect_interactively(ssh_config).await?
+    };
 
     let output = client.exec_command(command).await?;
     println!("=== Raw Response from MikroTik CLI ===");
@@ -249,38 +359,135 @@ async fn run_exec_command(cli: &CliArgs, command: &str, force_demo: bool) -> Res
     Ok(())
 }
 
-fn determine_ssh_config(cli: &CliArgs) -> Result<Option<SshConfig>> {
+/// Host key settings shared by every code path that builds an `SshConfig`.
+fn host_key_settings(cli: &CliArgs) -> (HostKeyPolicy, Option<PathBuf>) {
+    let policy = if cli.accept_new_hostkey {
+        HostKeyPolicy::AcceptNew
+    } else {
+        HostKeyPolicy::Strict
+    };
+    (policy, cli.known_hosts.clone())
+}
+
+/// Resolve the password for a host, in the documented precedence order.
+///
+/// `interactive` is false for `dump`/`exec` piping into scripts, where a hanging prompt
+/// would be worse than a clear failure.
+fn resolve_password(
+    cli: &CliArgs,
+    user: &str,
+    host: &str,
+    port: u16,
+    stored: Option<String>,
+    from_file: bool,
+    interactive: bool,
+) -> Result<Option<String>> {
+    if let Some(p) = &cli.password {
+        eprintln!(
+            "⚠️  --password is visible in `ps` output and your shell history. \
+             Prefer --password-stdin or MIKROTUI_PASSWORD."
+        );
+        return Ok(Some(p.clone()));
+    }
+
+    if cli.password_stdin {
+        return Ok(Some(secrets::read_from_stdin()?));
+    }
+
+    if let Some(p) = secrets::read_from_env() {
+        return Ok(Some(p));
+    }
+
+    let account = secrets::account_id(user, host, port);
+    if let Some(p) = secrets::keyring_get(&account) {
+        return Ok(Some(p));
+    }
+
+    if let Some(p) = stored {
+        if from_file {
+            eprintln!(
+                "⚠️  Using the password stored in config.json for {account}. It is only \
+                 obfuscated, not encrypted — anyone who can read that file can recover it. \
+                 Run `mikrotui host migrate` to move it into the OS keyring."
+            );
+        }
+        return Ok(Some(p));
+    }
+
+    if interactive {
+        return Ok(Some(secrets::prompt(&account)?));
+    }
+
+    Ok(None)
+}
+
+fn determine_ssh_config(cli: &CliArgs, interactive: bool) -> Result<Option<SshConfig>> {
+    let (host_key_policy, known_hosts) = host_key_settings(cli);
+
     if cli.demo {
         return Ok(Some(SshConfig {
-            host: "192.168.88.1".to_string(),
-            port: 22,
-            user: "admin".to_string(),
-            pass: None,
-            key_path: None,
             demo_mode: true,
+            host_key_policy,
+            known_hosts,
+            ..SshConfig::default()
         }));
     }
 
     if let Some(host) = &cli.host {
+        let user = cli.user.clone().unwrap_or_else(|| "admin".to_string());
+        let port = cli.port.unwrap_or(22);
+        let pass = resolve_password(cli, &user, host, port, None, false, interactive)?;
         return Ok(Some(SshConfig {
             host: host.clone(),
-            port: cli.port.unwrap_or(22),
-            user: cli.user.clone().unwrap_or_else(|| "admin".to_string()),
-            pass: cli.password.clone(),
+            port,
+            user,
+            pass,
             key_path: None,
             demo_mode: false,
+            host_key_policy,
+            known_hosts,
         }));
     }
 
     if AppConfig::exists() {
         let config = AppConfig::load()?;
         if !config.hosts.is_empty() {
-            let selected = wizard::prompt_select_host(&config)?;
-            return Ok(Some(selected));
+            let host_cfg = wizard::prompt_select_host(&config)?;
+            let stored = secrets::keyring_get(&host_cfg.account_id())
+                .map(|p| (p, false))
+                .or_else(|| host_cfg.file_password().map(|p| (p, true)));
+            let (stored, from_file) = match stored {
+                Some((p, f)) => (Some(p), f),
+                None => (None, false),
+            };
+            let pass = resolve_password(
+                cli,
+                &host_cfg.user,
+                &host_cfg.host,
+                host_cfg.port,
+                stored,
+                from_file,
+                interactive,
+            )?;
+            return Ok(Some(SshConfig {
+                host: host_cfg.host.clone(),
+                port: host_cfg.port,
+                user: host_cfg.user.clone(),
+                pass,
+                key_path: None,
+                demo_mode: false,
+                host_key_policy,
+                known_hosts,
+            }));
         }
     }
 
-    wizard::handle_first_time_run()
+    let first_run = wizard::handle_first_time_run()?;
+    Ok(first_run.map(|mut cfg| {
+        cfg.host_key_policy = host_key_policy;
+        cfg.known_hosts = known_hosts;
+        cfg
+    }))
 }
 
 async fn run_app(
@@ -293,20 +500,14 @@ async fn run_app(
         // Process background events from Tokio channel
         while let Ok(event) = rx.try_recv() {
             match event {
-                app::AppEvent::DataLoaded {
-                    system,
-                    interfaces,
-                    ip_addresses,
-                    ip_routes,
-                    dhcp_leases,
-                    firewall_rules,
-                    neighbors,
-                    logs,
-                } => {
-                    app.apply_loaded_data(system, interfaces, ip_addresses, ip_routes, dhcp_leases, firewall_rules, neighbors, logs);
-                }
+                app::AppEvent::LoadFailed(err) => app.report_load_failure(err),
+                app::AppEvent::HostKeyVerified(v) => app.host_key_verified = v,
+                app::AppEvent::DataLoaded(data) => app.apply_loaded_data(*data),
                 app::AppEvent::PingFinished(result) => {
-                    app.status_message = format!("✅ Ping completed for {}: {}% loss", result.target, result.packet_loss_pct);
+                    app.status_message = format!(
+                        "✅ Ping completed for {}: {}% loss",
+                        result.target, result.packet_loss_pct
+                    );
                     app.ping_state = PingState::Completed { result };
                 }
             }
@@ -426,11 +627,6 @@ async fn run_app(
                         // Ping Tool (p)
                         (KeyCode::Char('p'), _) => {
                             app.open_ping_prompt();
-                        }
-
-                        // Safe Mode Toggle (Ctrl+X)
-                        (KeyCode::Char('x'), KeyModifiers::CONTROL) => {
-                            app.toggle_safe_mode();
                         }
 
                         // Cycle Theme (t)

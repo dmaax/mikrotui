@@ -1,3 +1,4 @@
+use crate::app::App;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::Modifier,
@@ -5,7 +6,6 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
     Frame,
 };
-use crate::app::App;
 
 pub fn render_help_modal(f: &mut Frame, app: &App) {
     if !app.show_help_modal {
@@ -20,7 +20,10 @@ pub fn render_help_modal(f: &mut Frame, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(t.border_focus)
-        .title(Span::styled(" ⌨  MikroTUI Keyboard Shortcuts & Help ", t.title));
+        .title(Span::styled(
+            " ⌨  MikroTUI Keyboard Shortcuts & Help ",
+            t.title,
+        ));
 
     let header_cells = ["Hotkey / Shortcut", "Description & Action"]
         .iter()
@@ -28,14 +31,32 @@ pub fn render_help_modal(f: &mut Frame, app: &App) {
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let shortcuts = vec![
-        ("Tab / Shift+Tab", "Switch active menu tab (or use Left/Right Arrow keys / h / l)"),
+        (
+            "Tab / Shift+Tab",
+            "Switch active menu tab (or use Left/Right Arrow keys / h / l)",
+        ),
         ("↑ / ↓ (or k / j)", "Navigate up / down through table rows"),
-        ("Enter", "Open Item Details modal (view full properties & complete comments)"),
-        ("p", "Open interactive Ping Diagnostic tool (/ping <target>)"),
-        ("/", "Activate live filter search mode (type query, Enter/Esc to finish)"),
-        ("t", "Cycle color themes (WinBox Dark, Nord Slate, High Contrast)"),
-        ("Ctrl+X", "Toggle Safe Mode indicator (Safe mode is enabled by default)"),
-        ("r / F5", "Refresh all data via SSH in background (non-blocking)"),
+        (
+            "Enter",
+            "Open Item Details modal (view full properties & complete comments)",
+        ),
+        (
+            "p",
+            "Open interactive Ping Diagnostic tool (/ping <target>)",
+        ),
+        (
+            "/",
+            "Activate live filter search mode (type query, Enter/Esc to finish)",
+        ),
+        (
+            "t",
+            "Cycle color themes (WinBox Dark, Nord Slate, High Contrast)",
+        ),
+        ("Ctrl+O", "Switch to another stored router host"),
+        (
+            "r / F5",
+            "Refresh all data via SSH in background (non-blocking)",
+        ),
         ("?", "Toggle this Keyboard Shortcuts & Help modal window"),
         ("q / Ctrl+C", "Quit MikroTUI"),
     ];
@@ -47,15 +68,9 @@ pub fn render_help_modal(f: &mut Frame, app: &App) {
         ])
     });
 
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(20),
-            Constraint::Min(35),
-        ],
-    )
-    .header(header)
-    .block(Block::default());
+    let table = Table::new(rows, [Constraint::Length(20), Constraint::Min(35)])
+        .header(header)
+        .block(Block::default());
 
     let inner_area = Rect {
         x: area.x + 1,

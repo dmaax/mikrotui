@@ -70,24 +70,36 @@ pub enum PingState {
     Completed { result: PingResult },
 }
 
+/// One refresh's worth of router state. `None` means that fetch failed; an empty `Vec`
+/// means the router genuinely has none of that resource.
+#[derive(Default)]
+pub struct LoadedData {
+    pub system: Option<SystemResource>,
+    pub interfaces: Option<Vec<Interface>>,
+    pub ip_addresses: Option<Vec<IpAddress>>,
+    pub ip_routes: Option<Vec<IpRoute>>,
+    pub dhcp_leases: Option<Vec<DhcpLease>>,
+    pub firewall_rules: Option<Vec<FirewallRule>>,
+    pub neighbors: Option<Vec<Neighbor>>,
+    pub logs: Option<Vec<LogEntry>>,
+}
+
 pub enum AppEvent {
-    DataLoaded {
-        system: Option<SystemResource>,
-        interfaces: Option<Vec<Interface>>,
-        ip_addresses: Option<Vec<IpAddress>>,
-        ip_routes: Option<Vec<IpRoute>>,
-        dhcp_leases: Option<Vec<DhcpLease>>,
-        firewall_rules: Option<Vec<FirewallRule>>,
-        neighbors: Option<Vec<Neighbor>>,
-        logs: Option<Vec<LogEntry>>,
-    },
+    /// A refresh could not reach the router. Previously every failure was swallowed by
+    /// `.ok()` and still reported as success, which would have hidden host key
+    /// rejections entirely.
+    LoadFailed(String),
+    HostKeyVerified(bool),
+    /// Boxed: inline this payload is ~490 bytes and would set the size of every event.
+    DataLoaded(Box<LoadedData>),
     PingFinished(PingResult),
 }
 
 pub struct App {
     pub active_tab: Tab,
     pub selected_index: usize,
-    pub safe_mode: bool,
+    /// Whether the current session's host key matched `known_hosts`.
+    pub host_key_verified: bool,
     pub input_mode: InputMode,
     pub filter_query: String,
     pub client: RouterClient,
@@ -114,14 +126,17 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: SshConfig) -> Self {
+    /// Build the app around a client that already connected, so the TUI reuses the
+    /// session whose host key was verified (and accepted) before raw mode was entered.
+    pub fn with_client(client: RouterClient, host_key_verified: bool) -> Self {
+        let demo = client.config.demo_mode;
         Self {
             active_tab: Tab::System,
             selected_index: 0,
-            safe_mode: true,
+            host_key_verified,
             input_mode: InputMode::Normal,
             filter_query: String::new(),
-            client: RouterClient::new(config),
+            client,
             theme: Theme::winbox_dark(),
             show_detail_modal: false,
             show_help_modal: false,
@@ -137,7 +152,11 @@ impl App {
             firewall_rules: Vec::new(),
             neighbors: Vec::new(),
             logs: Vec::new(),
-            status_message: "Connected. SAFE MODE ENABLED BY DEFAULT (Read-Only)".to_string(),
+            status_message: if demo {
+                "Demo mode — showing sample data, no router is connected.".to_string()
+            } else {
+                "Connected. Read-only: MikroTUI refuses any command that writes.".to_string()
+            },
             is_loading: false,
         }
     }
@@ -152,18 +171,28 @@ impl App {
 
     pub fn switch_host(&mut self, idx: usize, tx: mpsc::Sender<AppEvent>) {
         if let Some(host_cfg) = self.available_hosts.get(idx).cloned() {
+            // Inside the TUI there is no way to prompt for a host key decision, so an
+            // unknown host is refused rather than trusted; the error explains how to
+            // accept it from the command line.
             let new_ssh_config = SshConfig {
                 host: host_cfg.host.clone(),
                 port: host_cfg.port,
                 user: host_cfg.user.clone(),
-                pass: host_cfg.get_password(),
+                pass: crate::secrets::keyring_get(&host_cfg.account_id())
+                    .or_else(|| host_cfg.file_password()),
                 key_path: None,
                 demo_mode: false,
+                host_key_policy: crate::ssh::HostKeyPolicy::Strict,
+                known_hosts: self.client.config.known_hosts.clone(),
             };
 
             self.client = RouterClient::new(new_ssh_config);
+            self.host_key_verified = false;
             self.show_host_switch_modal = false;
-            self.status_message = format!("Connecting to router [{}] ({})...", host_cfg.name, host_cfg.host);
+            self.status_message = format!(
+                "Connecting to router [{}] ({})...",
+                host_cfg.name, host_cfg.host
+            );
 
             // Reset current view models
             self.system_resource = SystemResource::default();
@@ -183,7 +212,9 @@ impl App {
 
     pub fn open_ping_prompt(&mut self) {
         let default_target = self.get_selected_ip_or_default();
-        self.ping_state = PingState::InputtingTarget { input: default_target };
+        self.ping_state = PingState::InputtingTarget {
+            input: default_target,
+        };
     }
 
     pub fn trigger_ping(&mut self, target: String, tx: mpsc::Sender<AppEvent>) {
@@ -191,7 +222,9 @@ impl App {
             self.ping_state = PingState::Inactive;
             return;
         }
-        self.ping_state = PingState::Running { target: target.clone() };
+        self.ping_state = PingState::Running {
+            target: target.clone(),
+        };
         let client = self.client.clone();
 
         tokio::spawn(async move {
@@ -205,7 +238,12 @@ impl App {
         match self.active_tab {
             Tab::IpAddresses => {
                 if let Some(item) = self.filtered_ip_addresses().get(self.selected_index) {
-                    return item.address.split('/').next().unwrap_or("8.8.8.8").to_string();
+                    return item
+                        .address
+                        .split('/')
+                        .next()
+                        .unwrap_or("8.8.8.8")
+                        .to_string();
                 }
             }
             Tab::IpRoutes => {
@@ -214,7 +252,12 @@ impl App {
                         return item.gateway.clone();
                     }
                     if !item.dst_address.is_empty() && item.dst_address != "0.0.0.0/0" {
-                        return item.dst_address.split('/').next().unwrap_or("8.8.8.8").to_string();
+                        return item
+                            .dst_address
+                            .split('/')
+                            .next()
+                            .unwrap_or("8.8.8.8")
+                            .to_string();
                     }
                 }
             }
@@ -247,47 +290,83 @@ impl App {
         let client = self.client.clone();
 
         tokio::spawn(async move {
-            let system = client.fetch_system_resource().await.ok();
-            let interfaces = client.fetch_interfaces().await.ok();
-            let ip_addresses = client.fetch_ip_addresses().await.ok();
-            let ip_routes = client.fetch_ip_routes().await.ok();
-            let dhcp_leases = client.fetch_dhcp_leases().await.ok();
-            let firewall_rules = client.fetch_firewall_rules().await.ok();
-            let neighbors = client.fetch_neighbors().await.ok();
-            let logs = client.fetch_logs().await.ok();
+            // Connect explicitly so a rejected host key is reported instead of showing
+            // up as eight silently empty result sets.
+            if let Err(err) = client.connect().await {
+                let _ = tx.send(AppEvent::LoadFailed(err.to_string())).await;
+                return;
+            }
+            let _ = tx
+                .send(AppEvent::HostKeyVerified(client.host_key_verified().await))
+                .await;
 
-            let _ = tx.send(AppEvent::DataLoaded {
-                system,
-                interfaces,
-                ip_addresses,
-                ip_routes,
-                dhcp_leases,
-                firewall_rules,
-                neighbors,
-                logs,
-            }).await;
+            let data = LoadedData {
+                system: client.fetch_system_resource().await.ok(),
+                interfaces: client.fetch_interfaces().await.ok(),
+                ip_addresses: client.fetch_ip_addresses().await.ok(),
+                ip_routes: client.fetch_ip_routes().await.ok(),
+                dhcp_leases: client.fetch_dhcp_leases().await.ok(),
+                firewall_rules: client.fetch_firewall_rules().await.ok(),
+                neighbors: client.fetch_neighbors().await.ok(),
+                logs: client.fetch_logs().await.ok(),
+            };
+
+            let _ = tx.send(AppEvent::DataLoaded(Box::new(data))).await;
         });
     }
 
-    pub fn apply_loaded_data(
-        &mut self,
-        system: Option<SystemResource>,
-        interfaces: Option<Vec<Interface>>,
-        ip_addresses: Option<Vec<IpAddress>>,
-        ip_routes: Option<Vec<IpRoute>>,
-        dhcp_leases: Option<Vec<DhcpLease>>,
-        firewall_rules: Option<Vec<FirewallRule>>,
-        neighbors: Option<Vec<Neighbor>>,
-        logs: Option<Vec<LogEntry>>,
-    ) {
-        if let Some(res) = system { if !res.board_name.is_empty() || !res.version.is_empty() { self.system_resource = res; } }
-        if let Some(ifaces) = interfaces { if !ifaces.is_empty() { self.interfaces = ifaces; } }
-        if let Some(addrs) = ip_addresses { if !addrs.is_empty() { self.ip_addresses = addrs; } }
-        if let Some(routes) = ip_routes { if !routes.is_empty() { self.ip_routes = routes; } }
-        if let Some(dhcp) = dhcp_leases { if !dhcp.is_empty() { self.dhcp_leases = dhcp; } }
-        if let Some(fw) = firewall_rules { if !fw.is_empty() { self.firewall_rules = fw; } }
-        if let Some(neigh) = neighbors { if !neigh.is_empty() { self.neighbors = neigh; } }
-        if let Some(l) = logs { if !l.is_empty() { self.logs = l; } }
+    pub fn apply_loaded_data(&mut self, data: LoadedData) {
+        let LoadedData {
+            system,
+            interfaces,
+            ip_addresses,
+            ip_routes,
+            dhcp_leases,
+            firewall_rules,
+            neighbors,
+            logs,
+        } = data;
+
+        if let Some(res) = system {
+            if !res.board_name.is_empty() || !res.version.is_empty() {
+                self.system_resource = res;
+            }
+        }
+        if let Some(ifaces) = interfaces {
+            if !ifaces.is_empty() {
+                self.interfaces = ifaces;
+            }
+        }
+        if let Some(addrs) = ip_addresses {
+            if !addrs.is_empty() {
+                self.ip_addresses = addrs;
+            }
+        }
+        if let Some(routes) = ip_routes {
+            if !routes.is_empty() {
+                self.ip_routes = routes;
+            }
+        }
+        if let Some(dhcp) = dhcp_leases {
+            if !dhcp.is_empty() {
+                self.dhcp_leases = dhcp;
+            }
+        }
+        if let Some(fw) = firewall_rules {
+            if !fw.is_empty() {
+                self.firewall_rules = fw;
+            }
+        }
+        if let Some(neigh) = neighbors {
+            if !neigh.is_empty() {
+                self.neighbors = neigh;
+            }
+        }
+        if let Some(l) = logs {
+            if !l.is_empty() {
+                self.logs = l;
+            }
+        }
 
         self.is_loading = false;
         self.status_message = "✅ Data successfully updated via SSH.".to_string();
@@ -359,15 +438,25 @@ impl App {
     }
 
     pub fn next_tab(&mut self) {
-        let current_idx = Tab::ALL.iter().position(|&t| t == self.active_tab).unwrap_or(0);
+        let current_idx = Tab::ALL
+            .iter()
+            .position(|&t| t == self.active_tab)
+            .unwrap_or(0);
         let next_idx = (current_idx + 1) % Tab::ALL.len();
         self.active_tab = Tab::ALL[next_idx];
         self.selected_index = 0;
     }
 
     pub fn prev_tab(&mut self) {
-        let current_idx = Tab::ALL.iter().position(|&t| t == self.active_tab).unwrap_or(0);
-        let prev_idx = if current_idx == 0 { Tab::ALL.len() - 1 } else { current_idx - 1 };
+        let current_idx = Tab::ALL
+            .iter()
+            .position(|&t| t == self.active_tab)
+            .unwrap_or(0);
+        let prev_idx = if current_idx == 0 {
+            Tab::ALL.len() - 1
+        } else {
+            current_idx - 1
+        };
         self.active_tab = Tab::ALL[prev_idx];
         self.selected_index = 0;
     }
@@ -403,13 +492,9 @@ impl App {
         }
     }
 
-    pub fn toggle_safe_mode(&mut self) {
-        self.safe_mode = !self.safe_mode;
-        if self.safe_mode {
-            self.status_message = "Safe Mode: ENABLED (Ctrl+X)".to_string();
-        } else {
-            self.status_message = "Safe Mode: DISABLED (Warning!)".to_string();
-        }
+    pub fn report_load_failure(&mut self, err: String) {
+        self.is_loading = false;
+        self.status_message = format!("❌ {err}");
     }
 
     pub fn filtered_interfaces(&self) -> Vec<&Interface> {
@@ -417,9 +502,14 @@ impl App {
             self.interfaces.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.interfaces.iter().filter(|i| {
-                i.name.to_lowercase().contains(&q) || i.comment.to_lowercase().contains(&q) || i.mac_address.to_lowercase().contains(&q)
-            }).collect()
+            self.interfaces
+                .iter()
+                .filter(|i| {
+                    i.name.to_lowercase().contains(&q)
+                        || i.comment.to_lowercase().contains(&q)
+                        || i.mac_address.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -428,9 +518,14 @@ impl App {
             self.ip_addresses.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.ip_addresses.iter().filter(|i| {
-                i.address.to_lowercase().contains(&q) || i.interface.to_lowercase().contains(&q) || i.comment.to_lowercase().contains(&q)
-            }).collect()
+            self.ip_addresses
+                .iter()
+                .filter(|i| {
+                    i.address.to_lowercase().contains(&q)
+                        || i.interface.to_lowercase().contains(&q)
+                        || i.comment.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -439,9 +534,14 @@ impl App {
             self.ip_routes.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.ip_routes.iter().filter(|r| {
-                r.dst_address.to_lowercase().contains(&q) || r.gateway.to_lowercase().contains(&q) || r.comment.to_lowercase().contains(&q)
-            }).collect()
+            self.ip_routes
+                .iter()
+                .filter(|r| {
+                    r.dst_address.to_lowercase().contains(&q)
+                        || r.gateway.to_lowercase().contains(&q)
+                        || r.comment.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -450,9 +550,14 @@ impl App {
             self.dhcp_leases.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.dhcp_leases.iter().filter(|d| {
-                d.address.to_lowercase().contains(&q) || d.host_name.to_lowercase().contains(&q) || d.mac_address.to_lowercase().contains(&q)
-            }).collect()
+            self.dhcp_leases
+                .iter()
+                .filter(|d| {
+                    d.address.to_lowercase().contains(&q)
+                        || d.host_name.to_lowercase().contains(&q)
+                        || d.mac_address.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -461,9 +566,14 @@ impl App {
             self.firewall_rules.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.firewall_rules.iter().filter(|f| {
-                f.chain.to_lowercase().contains(&q) || f.action.to_lowercase().contains(&q) || f.comment.to_lowercase().contains(&q)
-            }).collect()
+            self.firewall_rules
+                .iter()
+                .filter(|f| {
+                    f.chain.to_lowercase().contains(&q)
+                        || f.action.to_lowercase().contains(&q)
+                        || f.comment.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -472,9 +582,16 @@ impl App {
             self.neighbors.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.neighbors.iter().filter(|n| {
-                n.interface.to_lowercase().contains(&q) || n.identity.to_lowercase().contains(&q) || n.ip_address.to_lowercase().contains(&q) || n.mac_address.to_lowercase().contains(&q) || n.board.to_lowercase().contains(&q)
-            }).collect()
+            self.neighbors
+                .iter()
+                .filter(|n| {
+                    n.interface.to_lowercase().contains(&q)
+                        || n.identity.to_lowercase().contains(&q)
+                        || n.ip_address.to_lowercase().contains(&q)
+                        || n.mac_address.to_lowercase().contains(&q)
+                        || n.board.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -483,9 +600,12 @@ impl App {
             self.logs.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.logs.iter().filter(|l| {
-                l.message.to_lowercase().contains(&q) || l.topics.to_lowercase().contains(&q)
-            }).collect()
+            self.logs
+                .iter()
+                .filter(|l| {
+                    l.message.to_lowercase().contains(&q) || l.topics.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 }

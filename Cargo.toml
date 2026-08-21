@@ -15,12 +15,25 @@ exclude = [
     "target/",
 ]
 
+[features]
+default = []
+# Store router passwords in the OS keyring instead of the config file.
+# Off by default: the Linux backend needs a running Secret Service, which headless
+# machines usually lack, and enabling it unconditionally would make `cargo install`
+# fail there. The zbus backend is used rather than dbus-secret-service so that no
+# system libdbus development package is required to build.
+keyring = [
+    "dep:keyring-core",
+    "dep:zbus-secret-service-keyring-store",
+    "dep:apple-native-keyring-store",
+    "dep:windows-native-keyring-store",
+]
+
 [dependencies]
 ratatui = "0.29"
 crossterm = "0.28"
 tokio = { version = "1.40", features = ["full"] }
-russh = "0.45"
-russh-keys = "0.45"
+russh = "0.63"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -29,3 +42,19 @@ regex = "1.10"
 async-trait = "0.1"
 dirs = "5.0"
 inquire = "0.7"
+
+keyring-core = { version = "1.0", optional = true }
+
+[target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios"))))'.dependencies]
+# rt-tokio-crypto-rust: reuse the Tokio runtime MikroTUI already has, and take the
+# pure-Rust crypto backend so no OpenSSL or libdbus C library is needed to build.
+zbus-secret-service-keyring-store = { version = "1.0", optional = true, default-features = false, features = ["rt-tokio-crypto-rust"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# `keychain` selects the standard login-keychain store, matching what
+# secrets::backend::init calls. Without an explicit store feature the crate
+# refuses to build on macOS.
+apple-native-keyring-store = { version = "1.0", optional = true, default-features = false, features = ["keychain"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-native-keyring-store = { version = "1.1", optional = true }
