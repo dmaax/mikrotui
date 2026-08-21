@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-2021-blue.svg)](https://www.rust-lang.org/)
 
-**MikroTUI** is a modern, ultra-fast Terminal User Interface (TUI) for **MikroTik RouterOS**, inspired by the classic **WinBox** GUI. It connects directly via SSH and operates in a strict **Read-Only** mode with **Safe Mode** enabled by default.
+**MikroTUI** is a modern, ultra-fast Terminal User Interface (TUI) for **MikroTik RouterOS**, inspired by the classic **WinBox** GUI. It connects over SSH, verifies the router's host key against `known_hosts`, and sends only read commands — any command that would write is refused before it leaves your machine.
 
 ---
 
@@ -19,7 +19,8 @@
 - 📡 **Interactive Ping Diagnostic (`p`)**: Built-in ICMP ping tool running directly from the router to any target IP/hostname, displaying packet loss % and RTT statistics (Min/Avg/Max).
 - 🔍 **Item Details Modal (`Enter`)**: Centered popup displaying complete, unclipped properties and long comments for any selected item.
 - 🎨 **Clean Theme Engine (`t`)**: Dynamically switch between high-contrast minimalist themes: **WinBox Dark** (default), **Nord Slate**, and **High Contrast**.
-- 🔒 **Secure Host Credentials**: Stored in `~/.config/mikrotui/config.json` with machine-salt obfuscation and restricted `0600` Unix file permissions.
+- 🔑 **Host Key Verification**: The router's SSH key is checked against `~/.ssh/known_hosts` before any credential is sent; a changed key aborts the connection.
+- 🔒 **Credentials**: No password is stored by default — read from stdin, the environment, the OS keyring (`--features keyring`), or an interactive prompt. See [Security](#-security).
 - ⚡ **Non-Blocking Async Core**: Built on Tokio and Ratatui. All SSH data fetching runs in background threads with strict debounce guards to prevent UI lag or freeze.
 - 📊 **CLI Automation & JSON Dump**: Non-visual output mode for scripts (`mikrotui dump ip-addresses --format json`).
 
@@ -54,8 +55,9 @@ cargo build --release
 # Launch interactive TUI (prompts for host selection or wizard on first run)
 mikrotui
 
-# Or specify target host directly via CLI flags:
-mikrotui --host 192.168.88.1 --user admin --password secret
+# Or specify target host directly via CLI flags (password read from a pipe,
+# so it never appears in `ps` output or your shell history):
+pass show mikrotik | mikrotui --host 192.168.88.1 --user admin --password-stdin
 
 # Or run in Demo Mode (no router required):
 mikrotui --demo
@@ -64,11 +66,14 @@ mikrotui --demo
 ### 2. Manage Router Hosts
 
 ```bash
-# Add a new router interactively to encrypted config file
+# Add a new router interactively (asks where the password should live)
 mikrotui host add
 
-# List all configured hosts
+# List configured hosts and where each password is stored
 mikrotui host list
+
+# Move passwords still obfuscated in config.json into the OS keyring
+mikrotui host migrate
 ```
 
 ### 3. Non-Visual CLI Dump (Automation & Debug)
@@ -96,18 +101,78 @@ mikrotui exec "/ip address print"
 | **p** | Open interactive Ping Diagnostic tool (`/ping <target>`) |
 | **/** | Activate live filter search (type query, `Enter`/`Esc` to finish) |
 | **t** | Cycle color themes (*WinBox Dark*, *Nord Slate*, *High Contrast*) |
-| **Ctrl+X** | Toggle Safe Mode indicator (*Enabled by default*) |
+| **Ctrl+O** | Switch to another stored router host |
 | **r / F5** | Refresh data via SSH in background (*Non-blocking*) |
 | **?** | Open / close Keyboard Shortcuts & Help modal |
 | **q / Ctrl+C** | Quit MikroTUI |
 
 ---
 
-## 🔐 Security & Safe Mode
+## 🔐 Security
 
-1. **Read-Only Enforcement**: Write operations (`add`, `set`, `remove`, `enable`, `disable`) are strictly blocked at the client layer.
-2. **Default Safe Mode**: Safe Mode is enabled by default (`[SAFE MODE: ENABLED]`).
-3. **Encrypted Credentials**: Stored passwords in `~/.config/mikrotui/config.json` use machine-salt XOR obfuscation (`enc:v1:...`) combined with Unix `0o600` file permissions to prevent unauthorized plain-text reading.
+### Host key verification
+
+MikroTUI verifies the router's SSH host key against `~/.ssh/known_hosts` **before** sending
+any credential, the same way `ssh` does.
+
+- **First connection** shows the key fingerprint and asks you to confirm it. Check it on the
+  router with `/ip ssh print` before accepting.
+- **A changed key is always fatal.** MikroTUI never offers to accept it — that is the signal
+  of an interception. If the router was genuinely reinstalled, delete the offending line from
+  `known_hosts` and reconnect.
+- `--accept-new-hostkey` records an unknown key without asking (for scripts). It still refuses
+  a *changed* key.
+- `--known-hosts <PATH>` uses a different file.
+
+Inside the TUI there is no way to prompt, so switching host (`Ctrl+O`) to a router whose key is
+unknown fails with an explanatory message. Connect to it once from the command line first.
+
+### Read-only enforcement
+
+Every command is checked against an **allowlist** before it is sent: a command runs only if it
+names a read-only action (`print`, `get`, `find`, `export`, `monitor`, `ping`, `traceroute`,
+`resolve`) and names no mutating one. This covers the forms a denylist misses — the RouterOS v7
+slash syntax (`/ip/address/set`), commands chained after a read (`... print; /system reboot`),
+`/system reboot` and `/system reset-configuration`, and script wrappers (`:execute`).
+
+> **This is a guard rail, not a permission boundary.** It runs on your machine, so it protects
+> you from mistakes, not the router from a determined user. The real guarantee is a RouterOS
+> account in the **`read` group** — give MikroTUI one of those rather than a full admin.
+
+### Credentials
+
+**MikroTUI does not store passwords by default.** In resolution order:
+
+| Source | How |
+| :--- | :--- |
+| stdin | `pass show router \| mikrotui --password-stdin` |
+| environment | `MIKROTUI_PASSWORD=… mikrotui` |
+| OS keyring | requires `--features keyring` (see below) |
+| config file | legacy, obfuscated only — warns on every use |
+| prompt | asked interactively when nothing else supplies one |
+
+`--password` still works but warns: it is visible in `ps` output and your shell history.
+
+To enable OS keyring storage:
+
+```bash
+cargo install mikrotui --features keyring
+mikrotui host migrate    # moves existing config.json passwords into the keyring
+```
+
+It is off by default because the Linux backend needs a running Secret Service (gnome-keyring,
+KeePassXC, …), which headless machines usually lack. The build itself is pure Rust — no
+`libdbus-1-dev` or OpenSSL required either way.
+
+> **On the old `enc:v1:` passwords.** Versions up to 0.2.2 XOR-ed the password against a key
+> derived from `$USER` and a salt compiled into the published binary, and called it encryption.
+> It is not: anyone who can read `config.json` can recover the password. Those entries still
+> load, now with a warning. Run `mikrotui host migrate` to move them into the keyring. Local
+> storage without a master password can never be more than obfuscation — any key the program
+> can recompute unattended, an attacker holding the file can recompute too.
+
+The config file and `known_hosts` are created with mode `0600` **at creation time**, not
+chmod-ed afterwards, so credentials are never briefly world-readable.
 
 ---
 

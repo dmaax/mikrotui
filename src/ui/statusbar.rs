@@ -23,7 +23,6 @@ pub fn render_statusbar(f: &mut Frame, app: &App, area: Rect) {
         Span::styled(" [Enter] Details ", t.title),
         Span::styled(" [p] Ping ", t.success),
         Span::styled(" [Ctrl+O] Switch Host ", t.title),
-        Span::styled(" [Ctrl+X] Safe Mode ", t.warning),
         Span::styled(" [/] Search ", t.warning),
         Span::styled(" [t] Theme ", t.accent),
         Span::styled(" [?] Help ", t.title),

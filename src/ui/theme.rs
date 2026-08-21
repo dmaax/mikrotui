@@ -39,8 +39,8 @@ pub struct Theme {
     pub success: Style,
     pub warning: Style,
     pub danger: Style,
-    pub safe_mode_active: Style,
-    pub safe_mode_inactive: Style,
+    pub host_key_verified: Style,
+    pub host_key_unverified: Style,
     pub read_only_badge: Style,
 }
 
@@ -67,8 +67,8 @@ impl Theme {
             success: Style::default().fg(Color::Rgb(70, 190, 120)),
             warning: Style::default().fg(Color::Rgb(235, 180, 70)),
             danger: Style::default().fg(Color::Rgb(230, 80, 80)),
-            safe_mode_active: Style::default().fg(Color::Black).bg(Color::Rgb(70, 190, 120)).add_modifier(Modifier::BOLD),
-            safe_mode_inactive: Style::default().fg(Color::White).bg(Color::Rgb(210, 60, 60)).add_modifier(Modifier::BOLD),
+            host_key_verified: Style::default().fg(Color::Black).bg(Color::Rgb(70, 190, 120)).add_modifier(Modifier::BOLD),
+            host_key_unverified: Style::default().fg(Color::White).bg(Color::Rgb(210, 60, 60)).add_modifier(Modifier::BOLD),
             read_only_badge: Style::default().fg(Color::White).bg(Color::Rgb(50, 110, 180)).add_modifier(Modifier::BOLD),
         }
     }
@@ -87,8 +87,8 @@ impl Theme {
             success: Style::default().fg(Color::Rgb(163, 190, 140)),
             warning: Style::default().fg(Color::Rgb(235, 203, 139)),
             danger: Style::default().fg(Color::Rgb(191, 97, 106)),
-            safe_mode_active: Style::default().fg(Color::Rgb(46, 52, 64)).bg(Color::Rgb(163, 190, 140)).add_modifier(Modifier::BOLD),
-            safe_mode_inactive: Style::default().fg(Color::Rgb(236, 239, 244)).bg(Color::Rgb(191, 97, 106)).add_modifier(Modifier::BOLD),
+            host_key_verified: Style::default().fg(Color::Rgb(46, 52, 64)).bg(Color::Rgb(163, 190, 140)).add_modifier(Modifier::BOLD),
+            host_key_unverified: Style::default().fg(Color::Rgb(236, 239, 244)).bg(Color::Rgb(191, 97, 106)).add_modifier(Modifier::BOLD),
             read_only_badge: Style::default().fg(Color::Rgb(236, 239, 244)).bg(Color::Rgb(94, 129, 172)).add_modifier(Modifier::BOLD),
         }
     }
@@ -107,8 +107,8 @@ impl Theme {
             success: Style::default().fg(Color::Green),
             warning: Style::default().fg(Color::Yellow),
             danger: Style::default().fg(Color::Red),
-            safe_mode_active: Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD),
-            safe_mode_inactive: Style::default().fg(Color::White).bg(Color::Red).add_modifier(Modifier::BOLD),
+            host_key_verified: Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD),
+            host_key_unverified: Style::default().fg(Color::White).bg(Color::Red).add_modifier(Modifier::BOLD),
             read_only_badge: Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
         }
     }

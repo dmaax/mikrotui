@@ -71,6 +71,11 @@ pub enum PingState {
 }
 
 pub enum AppEvent {
+    /// A refresh could not reach the router. Previously every failure was swallowed by
+    /// `.ok()` and still reported as success, which would have hidden host key
+    /// rejections entirely.
+    LoadFailed(String),
+    HostKeyVerified(bool),
     DataLoaded {
         system: Option<SystemResource>,
         interfaces: Option<Vec<Interface>>,
@@ -87,7 +92,8 @@ pub enum AppEvent {
 pub struct App {
     pub active_tab: Tab,
     pub selected_index: usize,
-    pub safe_mode: bool,
+    /// Whether the current session's host key matched `known_hosts`.
+    pub host_key_verified: bool,
     pub input_mode: InputMode,
     pub filter_query: String,
     pub client: RouterClient,
@@ -114,14 +120,17 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: SshConfig) -> Self {
+    /// Build the app around a client that already connected, so the TUI reuses the
+    /// session whose host key was verified (and accepted) before raw mode was entered.
+    pub fn with_client(client: RouterClient, host_key_verified: bool) -> Self {
+        let demo = client.config.demo_mode;
         Self {
             active_tab: Tab::System,
             selected_index: 0,
-            safe_mode: true,
+            host_key_verified,
             input_mode: InputMode::Normal,
             filter_query: String::new(),
-            client: RouterClient::new(config),
+            client,
             theme: Theme::winbox_dark(),
             show_detail_modal: false,
             show_help_modal: false,
@@ -137,7 +146,11 @@ impl App {
             firewall_rules: Vec::new(),
             neighbors: Vec::new(),
             logs: Vec::new(),
-            status_message: "Connected. SAFE MODE ENABLED BY DEFAULT (Read-Only)".to_string(),
+            status_message: if demo {
+                "Demo mode — showing sample data, no router is connected.".to_string()
+            } else {
+                "Connected. Read-only: MikroTUI refuses any command that writes.".to_string()
+            },
             is_loading: false,
         }
     }
@@ -152,16 +165,23 @@ impl App {
 
     pub fn switch_host(&mut self, idx: usize, tx: mpsc::Sender<AppEvent>) {
         if let Some(host_cfg) = self.available_hosts.get(idx).cloned() {
+            // Inside the TUI there is no way to prompt for a host key decision, so an
+            // unknown host is refused rather than trusted; the error explains how to
+            // accept it from the command line.
             let new_ssh_config = SshConfig {
                 host: host_cfg.host.clone(),
                 port: host_cfg.port,
                 user: host_cfg.user.clone(),
-                pass: host_cfg.get_password(),
+                pass: crate::secrets::keyring_get(&host_cfg.account_id())
+                    .or_else(|| host_cfg.file_password()),
                 key_path: None,
                 demo_mode: false,
+                host_key_policy: crate::ssh::HostKeyPolicy::Strict,
+                known_hosts: self.client.config.known_hosts.clone(),
             };
 
             self.client = RouterClient::new(new_ssh_config);
+            self.host_key_verified = false;
             self.show_host_switch_modal = false;
             self.status_message = format!("Connecting to router [{}] ({})...", host_cfg.name, host_cfg.host);
 
@@ -247,6 +267,16 @@ impl App {
         let client = self.client.clone();
 
         tokio::spawn(async move {
+            // Connect explicitly so a rejected host key is reported instead of showing
+            // up as eight silently empty result sets.
+            if let Err(err) = client.connect().await {
+                let _ = tx.send(AppEvent::LoadFailed(err.to_string())).await;
+                return;
+            }
+            let _ = tx
+                .send(AppEvent::HostKeyVerified(client.host_key_verified().await))
+                .await;
+
             let system = client.fetch_system_resource().await.ok();
             let interfaces = client.fetch_interfaces().await.ok();
             let ip_addresses = client.fetch_ip_addresses().await.ok();
@@ -403,13 +433,9 @@ impl App {
         }
     }
 
-    pub fn toggle_safe_mode(&mut self) {
-        self.safe_mode = !self.safe_mode;
-        if self.safe_mode {
-            self.status_message = "Safe Mode: ENABLED (Ctrl+X)".to_string();
-        } else {
-            self.status_message = "Safe Mode: DISABLED (Warning!)".to_string();
-        }
+    pub fn report_load_failure(&mut self, err: String) {
+        self.is_loading = false;
+        self.status_message = format!("❌ {err}");
     }
 
     pub fn filtered_interfaces(&self) -> Vec<&Interface> {

@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -6,6 +7,7 @@ use russh::{client, ChannelMsg};
 use russh_keys::key;
 use crate::models::*;
 use crate::ssh::guard;
+use crate::ssh::hostkey::{self, HostKeyIssue, HostKeyPolicy, IssueSlot};
 use crate::ssh::parser;
 
 #[derive(Clone, Debug)]
@@ -17,6 +19,10 @@ pub struct SshConfig {
     #[allow(dead_code)]
     pub key_path: Option<String>,
     pub demo_mode: bool,
+    /// What to do when the server key is not yet in `known_hosts`.
+    pub host_key_policy: HostKeyPolicy,
+    /// `known_hosts` file to verify against. Defaults to `~/.ssh/known_hosts`.
+    pub known_hosts: Option<PathBuf>,
 }
 
 impl Default for SshConfig {
@@ -28,11 +34,29 @@ impl Default for SshConfig {
             pass: None,
             key_path: None,
             demo_mode: true,
+            host_key_policy: HostKeyPolicy::Strict,
+            known_hosts: None,
         }
     }
 }
 
-struct SshHandler;
+impl SshConfig {
+    pub fn known_hosts_path(&self) -> Result<PathBuf> {
+        self.known_hosts
+            .clone()
+            .or_else(hostkey::default_known_hosts_path)
+            .ok_or_else(|| anyhow!("could not determine a known_hosts path (no home directory)"))
+    }
+}
+
+/// Verifies the server key against `known_hosts` before any credential is sent.
+struct SshHandler {
+    host: String,
+    port: u16,
+    policy: HostKeyPolicy,
+    known_hosts: PathBuf,
+    issue: IssueSlot,
+}
 
 #[async_trait::async_trait]
 impl client::Handler for SshHandler {
@@ -40,9 +64,16 @@ impl client::Handler for SshHandler {
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &key::PublicKey,
+        server_public_key: &key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        Ok(true) // Confia na chave do servidor MikroTik
+        Ok(hostkey::verify(
+            &self.host,
+            self.port,
+            server_public_key,
+            self.policy,
+            &self.known_hosts,
+            &self.issue,
+        ))
     }
 }
 
@@ -51,6 +82,10 @@ pub struct RouterClient {
     pub config: SshConfig,
     pub is_connected: Arc<Mutex<bool>>,
     session: Arc<Mutex<Option<client::Handle<SshHandler>>>>,
+    /// Set once a session has completed host key verification.
+    host_key_verified: Arc<Mutex<bool>>,
+    /// Why the last connection attempt failed verification, if that is why it failed.
+    last_host_key_issue: Arc<Mutex<Option<HostKeyIssue>>>,
 }
 
 impl RouterClient {
@@ -59,13 +94,24 @@ impl RouterClient {
             config,
             is_connected: Arc::new(Mutex::new(false)),
             session: Arc::new(Mutex::new(None)),
+            host_key_verified: Arc::new(Mutex::new(false)),
+            last_host_key_issue: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Whether the current session's host key was matched against `known_hosts`.
+    pub async fn host_key_verified(&self) -> bool {
+        *self.host_key_verified.lock().await
+    }
+
+    /// Verification failure from the most recent [`RouterClient::connect`] call.
+    pub async fn last_host_key_issue(&self) -> Option<HostKeyIssue> {
+        self.last_host_key_issue.lock().await.clone()
     }
 
     pub async fn connect(&self) -> Result<()> {
         if self.config.demo_mode {
-            let mut conn_lock = self.is_connected.lock().await;
-            *conn_lock = true;
+            *self.is_connected.lock().await = true;
             return Ok(());
         }
 
@@ -75,12 +121,39 @@ impl RouterClient {
         });
 
         let addr = format!("{}:{}", self.config.host, self.config.port);
-        let mut handle = tokio::time::timeout(
+        let issue: IssueSlot = Arc::new(std::sync::Mutex::new(None));
+        let handler = SshHandler {
+            host: self.config.host.clone(),
+            port: self.config.port,
+            policy: self.config.host_key_policy,
+            known_hosts: self.config.known_hosts_path()?,
+            issue: Arc::clone(&issue),
+        };
+
+        let connected = tokio::time::timeout(
             Duration::from_secs(10),
-            client::connect(config, addr.as_str(), SshHandler),
+            client::connect(config, addr.as_str(), handler),
         )
         .await
-        .map_err(|_| anyhow!("Tempo limite de conexão SSH excedido ao tentar conectar em {}", addr))??;
+        .map_err(|_| anyhow!("SSH connection to {addr} timed out"))?;
+
+        let recorded = issue.lock().ok().and_then(|g| g.clone());
+        *self.last_host_key_issue.lock().await = recorded.clone();
+
+        let mut handle = match connected {
+            Ok(handle) => handle,
+            Err(err) => {
+                // A rejected host key surfaces here as a generic transport failure;
+                // replace it with the specific reason the handler recorded.
+                return match recorded {
+                    Some(issue) => Err(anyhow!(issue)),
+                    None => Err(anyhow!("could not connect to {addr}: {err}")),
+                };
+            }
+        };
+
+        // Reaching this point means check_server_key returned true.
+        *self.host_key_verified.lock().await = true;
 
         let pass = self.config.pass.as_deref().unwrap_or("");
         let auth_res = handle
@@ -88,13 +161,14 @@ impl RouterClient {
             .await?;
 
         if !auth_res {
-            return Err(anyhow!("Falha na autenticação SSH para usuário '{}' em {}", self.config.user, addr));
+            return Err(anyhow!(
+                "SSH authentication failed for user '{}' at {addr}",
+                self.config.user
+            ));
         }
 
-        let mut conn_lock = self.is_connected.lock().await;
-        *conn_lock = true;
-        let mut sess_lock = self.session.lock().await;
-        *sess_lock = Some(handle);
+        *self.is_connected.lock().await = true;
+        *self.session.lock().await = Some(handle);
 
         Ok(())
     }
@@ -562,7 +636,7 @@ impl RouterClient {
         let mut sess_guard = self.session.lock().await;
         let handle = sess_guard
             .as_mut()
-            .ok_or_else(|| anyhow!("Sessão SSH não foi inicializada"))?;
+            .ok_or_else(|| anyhow!("SSH session is not initialised"))?;
 
         let mut channel = handle.channel_open_session().await?;
         channel.exec(true, cmd).await?;

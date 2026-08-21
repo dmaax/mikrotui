@@ -34,7 +34,7 @@ pub fn render_help_modal(f: &mut Frame, app: &App) {
         ("p", "Open interactive Ping Diagnostic tool (/ping <target>)"),
         ("/", "Activate live filter search mode (type query, Enter/Esc to finish)"),
         ("t", "Cycle color themes (WinBox Dark, Nord Slate, High Contrast)"),
-        ("Ctrl+X", "Toggle Safe Mode indicator (Safe mode is enabled by default)"),
+        ("Ctrl+O", "Switch to another stored router host"),
         ("r / F5", "Refresh all data via SSH in background (non-blocking)"),
         ("?", "Toggle this Keyboard Shortcuts & Help modal window"),
         ("q / Ctrl+C", "Quit MikroTUI"),

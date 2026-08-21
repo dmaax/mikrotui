@@ -32,16 +32,20 @@ pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
     // Right Status Block
     let host_info = format!(" Router: {} ({}) ", app.client.config.host, app.system_resource.board_name);
 
-    let (safe_badge, safe_style) = if app.safe_mode {
-        (" [SAFE MODE: ENABLED] ", t.safe_mode_active)
+    // Reports the actual state of host key verification rather than a badge that was
+    // decorative: in demo mode there is no SSH session to verify at all.
+    let (key_badge, key_style) = if app.client.config.demo_mode {
+        (" [DEMO] ", t.host_key_unverified)
+    } else if app.host_key_verified {
+        (" [HOST KEY: VERIFIED] ", t.host_key_verified)
     } else {
-        (" [SAFE MODE: DISABLED] ", t.safe_mode_inactive)
+        (" [HOST KEY: UNVERIFIED] ", t.host_key_unverified)
     };
 
     let status_spans = vec![
         Span::styled(host_info, t.normal_text),
         Span::raw(" | "),
-        Span::styled(safe_badge, safe_style),
+        Span::styled(key_badge, key_style),
         Span::raw(" | "),
         Span::styled(" [READ-ONLY] ", t.read_only_badge),
     ];
