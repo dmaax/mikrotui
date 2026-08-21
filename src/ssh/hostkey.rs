@@ -47,15 +47,16 @@ pub enum HostKeyIssue {
 impl HostKeyIssue {
     pub fn fingerprint(&self) -> &str {
         match self {
-            HostKeyIssue::Unknown { fingerprint, .. } | HostKeyIssue::Changed { fingerprint, .. } => {
-                fingerprint
-            }
+            HostKeyIssue::Unknown { fingerprint, .. }
+            | HostKeyIssue::Changed { fingerprint, .. } => fingerprint,
         }
     }
 
     pub fn key_type(&self) -> &str {
         match self {
-            HostKeyIssue::Unknown { key_type, .. } | HostKeyIssue::Changed { key_type, .. } => key_type,
+            HostKeyIssue::Unknown { key_type, .. } | HostKeyIssue::Changed { key_type, .. } => {
+                key_type
+            }
         }
     }
 }

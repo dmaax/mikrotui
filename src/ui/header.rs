@@ -1,3 +1,4 @@
+use crate::app::App;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Modifier,
@@ -5,7 +6,6 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
-use crate::app::App;
 
 pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
@@ -25,12 +25,18 @@ pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
         Span::styled(version_str, t.muted_text),
         Span::styled(" (WinBox TUI) ", t.accent.add_modifier(Modifier::BOLD)),
     ];
-    let title_p = Paragraph::new(Line::from(title_spans))
-        .block(Block::default().borders(Borders::ALL).border_style(t.border));
+    let title_p = Paragraph::new(Line::from(title_spans)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(t.border),
+    );
     f.render_widget(title_p, chunks[0]);
 
     // Right Status Block
-    let host_info = format!(" Router: {} ({}) ", app.client.config.host, app.system_resource.board_name);
+    let host_info = format!(
+        " Router: {} ({}) ",
+        app.client.config.host, app.system_resource.board_name
+    );
 
     // Reports the actual state of host key verification rather than a badge that was
     // decorative: in demo mode there is no SSH session to verify at all.
@@ -50,7 +56,10 @@ pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
         Span::styled(" [READ-ONLY] ", t.read_only_badge),
     ];
 
-    let status_p = Paragraph::new(Line::from(status_spans))
-        .block(Block::default().borders(Borders::ALL).border_style(t.border));
+    let status_p = Paragraph::new(Line::from(status_spans)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(t.border),
+    );
     f.render_widget(status_p, chunks[1]);
 }

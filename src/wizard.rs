@@ -1,8 +1,8 @@
-use anyhow::Result;
-use inquire::{Confirm, CustomType, Password, Select, Text};
 use crate::config::{AppConfig, HostConfig};
 use crate::secrets;
 use crate::ssh::SshConfig;
+use anyhow::Result;
+use inquire::{Confirm, CustomType, Password, Select, Text};
 
 /// Where the wizard should put the password it just collected.
 enum PasswordDestination {
@@ -61,9 +61,7 @@ pub fn run_add_host_wizard() -> Result<()> {
         .with_default(22)
         .prompt()?;
 
-    let user = Text::new("SSH Username:")
-        .with_default("admin")
-        .prompt()?;
+    let user = Text::new("SSH Username:").with_default("admin").prompt()?;
 
     println!(
         "\n💡 MikroTUI only ever issues read commands. Giving it a RouterOS account in the \
@@ -109,7 +107,10 @@ pub fn run_add_host_wizard() -> Result<()> {
     match destination {
         PasswordDestination::Keyring => {
             secrets::keyring_set(&host_cfg.account_id(), &password)?;
-            println!("🔐 Password stored in the OS keyring as '{}'.", host_cfg.account_id());
+            println!(
+                "🔐 Password stored in the OS keyring as '{}'.",
+                host_cfg.account_id()
+            );
         }
         PasswordDestination::ConfigFile => {
             host_cfg.set_file_password(&password);
@@ -124,7 +125,10 @@ pub fn run_add_host_wizard() -> Result<()> {
     app_config.add_host(host_cfg);
     app_config.save()?;
 
-    println!("✅ Configuration saved to: {}\n", AppConfig::get_config_path()?.display());
+    println!(
+        "✅ Configuration saved to: {}\n",
+        AppConfig::get_config_path()?.display()
+    );
 
     Ok(())
 }
@@ -159,7 +163,10 @@ pub fn run_migrate_secrets() -> Result<()> {
         return Ok(());
     }
 
-    println!("\n🔐 === Migrating {} password(s) to the OS keyring ===\n", pending.len());
+    println!(
+        "\n🔐 === Migrating {} password(s) to the OS keyring ===\n",
+        pending.len()
+    );
 
     let mut migrated = 0usize;
     for host in app_config.hosts.iter_mut() {
@@ -180,7 +187,10 @@ pub fn run_migrate_secrets() -> Result<()> {
     }
 
     app_config.save()?;
-    println!("\n{migrated} of {} migrated. config.json rewritten.\n", pending.len());
+    println!(
+        "\n{migrated} of {} migrated. config.json rewritten.\n",
+        pending.len()
+    );
 
     Ok(())
 }
@@ -262,8 +272,12 @@ pub fn handle_first_time_run() -> Result<Option<SshConfig>> {
             }
         }
     } else if ans.starts_with("⚡") {
-        let host = Text::new("Temporary IP/Host:").with_default("192.168.88.1").prompt()?;
-        let port = CustomType::<u16>::new("SSH Port:").with_default(22).prompt()?;
+        let host = Text::new("Temporary IP/Host:")
+            .with_default("192.168.88.1")
+            .prompt()?;
+        let port = CustomType::<u16>::new("SSH Port:")
+            .with_default(22)
+            .prompt()?;
         let user = Text::new("SSH Username:").with_default("admin").prompt()?;
         let pass = Password::new("SSH Password:")
             .with_display_mode(inquire::PasswordDisplayMode::Masked)

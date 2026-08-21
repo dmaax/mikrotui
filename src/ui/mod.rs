@@ -8,11 +8,11 @@ pub mod statusbar;
 pub mod theme;
 pub mod views;
 
+use crate::app::{App, Tab};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     Frame,
 };
-use crate::app::{App, Tab};
 
 pub fn render(f: &mut Frame, app: &App) {
     let main_chunks = Layout::default()
@@ -32,7 +32,7 @@ pub fn render(f: &mut Frame, app: &App) {
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Length(25), // Sidebar width
-            Constraint::Min(40),   // Main view width
+            Constraint::Min(40),    // Main view width
         ])
         .split(main_chunks[1]);
 

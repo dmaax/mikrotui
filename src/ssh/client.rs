@@ -1,14 +1,14 @@
-use anyhow::{anyhow, Result};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::Mutex;
-use russh::{client, ChannelMsg};
-use russh_keys::key;
 use crate::models::*;
 use crate::ssh::guard;
 use crate::ssh::hostkey::{self, HostKeyIssue, HostKeyPolicy, IssueSlot};
 use crate::ssh::parser;
+use anyhow::{anyhow, Result};
+use russh::{client, ChannelMsg};
+use russh_keys::key;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
 
 #[derive(Clone, Debug)]
 pub struct SshConfig {
@@ -262,11 +262,15 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/interface print terse without-paging").await?;
+        let raw = self
+            .exec_command("/interface print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_interfaces(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/interface print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/interface print detail without-paging")
+                .await?;
             parsed = parser::parse_interfaces(&raw_detail);
         }
 
@@ -311,16 +315,22 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip address print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip address print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_ip_addresses(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip address print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip address print detail without-paging")
+                .await?;
             parsed = parser::parse_ip_addresses(&raw_detail);
         }
 
         if parsed.is_empty() {
-            let raw_simple = self.exec_command("/ip address print without-paging").await?;
+            let raw_simple = self
+                .exec_command("/ip address print without-paging")
+                .await?;
             parsed = parser::parse_ip_addresses(&raw_simple);
         }
 
@@ -366,11 +376,15 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip route print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip route print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_ip_routes(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip route print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip route print detail without-paging")
+                .await?;
             parsed = parser::parse_ip_routes(&raw_detail);
         }
 
@@ -421,16 +435,22 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip dhcp-server lease print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip dhcp-server lease print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_dhcp_leases(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip dhcp-server lease print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip dhcp-server lease print detail without-paging")
+                .await?;
             parsed = parser::parse_dhcp_leases(&raw_detail);
         }
 
         if parsed.is_empty() {
-            let raw_simple = self.exec_command("/ip dhcp-server lease print without-paging").await?;
+            let raw_simple = self
+                .exec_command("/ip dhcp-server lease print without-paging")
+                .await?;
             parsed = parser::parse_dhcp_leases(&raw_simple);
         }
 
@@ -482,16 +502,22 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip firewall filter print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip firewall filter print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_firewall_rules(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip firewall filter print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip firewall filter print detail without-paging")
+                .await?;
             parsed = parser::parse_firewall_rules(&raw_detail);
         }
 
         if parsed.is_empty() {
-            let raw_simple = self.exec_command("/ip firewall filter print without-paging").await?;
+            let raw_simple = self
+                .exec_command("/ip firewall filter print without-paging")
+                .await?;
             parsed = parser::parse_firewall_rules(&raw_simple);
         }
 
@@ -534,16 +560,22 @@ impl RouterClient {
             ]);
         }
 
-        let raw = self.exec_command("/ip neighbor print terse without-paging").await?;
+        let raw = self
+            .exec_command("/ip neighbor print terse without-paging")
+            .await?;
         let mut parsed = parser::parse_neighbors(&raw);
 
         if parsed.is_empty() {
-            let raw_detail = self.exec_command("/ip neighbor print detail without-paging").await?;
+            let raw_detail = self
+                .exec_command("/ip neighbor print detail without-paging")
+                .await?;
             parsed = parser::parse_neighbors(&raw_detail);
         }
 
         if parsed.is_empty() {
-            let raw_simple = self.exec_command("/ip neighbor print without-paging").await?;
+            let raw_simple = self
+                .exec_command("/ip neighbor print without-paging")
+                .await?;
             parsed = parser::parse_neighbors(&raw_simple);
         }
 
@@ -576,7 +608,8 @@ impl RouterClient {
                 LogEntry {
                     time: "14:13:00".to_string(),
                     topics: "system,info,safe-mode".to_string(),
-                    message: "Safe Mode active for session (Read-Only Mode Enforcement)".to_string(),
+                    message: "Safe Mode active for session (Read-Only Mode Enforcement)"
+                        .to_string(),
                 },
             ]);
         }
@@ -596,11 +629,46 @@ impl RouterClient {
                 avg_rtt_ms: 11,
                 max_rtt_ms: 14,
                 sequences: vec![
-                    PingSeq { seq: 0, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 10, status: "ok".to_string() },
-                    PingSeq { seq: 1, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 12, status: "ok".to_string() },
-                    PingSeq { seq: 2, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 11, status: "ok".to_string() },
-                    PingSeq { seq: 3, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 8, status: "ok".to_string() },
-                    PingSeq { seq: 4, host: target.to_string(), size: 56, ttl: 117, rtt_ms: 14, status: "ok".to_string() },
+                    PingSeq {
+                        seq: 0,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 10,
+                        status: "ok".to_string(),
+                    },
+                    PingSeq {
+                        seq: 1,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 12,
+                        status: "ok".to_string(),
+                    },
+                    PingSeq {
+                        seq: 2,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 11,
+                        status: "ok".to_string(),
+                    },
+                    PingSeq {
+                        seq: 3,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 8,
+                        status: "ok".to_string(),
+                    },
+                    PingSeq {
+                        seq: 4,
+                        host: target.to_string(),
+                        size: 56,
+                        ttl: 117,
+                        rtt_ms: 14,
+                        status: "ok".to_string(),
+                    },
                 ],
                 raw_output: "Demo Mode Ping".to_string(),
             });

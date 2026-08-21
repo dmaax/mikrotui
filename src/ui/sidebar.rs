@@ -1,10 +1,10 @@
+use crate::app::{App, Tab};
 use ratatui::{
     layout::Rect,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem},
     Frame,
 };
-use crate::app::{App, Tab};
 
 pub fn render_sidebar(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
@@ -24,8 +24,12 @@ pub fn render_sidebar(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).border_style(t.border).title(" Menu WinBox "));
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(t.border)
+            .title(" Menu WinBox "),
+    );
 
     f.render_widget(list, area);
 }

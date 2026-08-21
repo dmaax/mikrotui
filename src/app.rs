@@ -183,7 +183,10 @@ impl App {
             self.client = RouterClient::new(new_ssh_config);
             self.host_key_verified = false;
             self.show_host_switch_modal = false;
-            self.status_message = format!("Connecting to router [{}] ({})...", host_cfg.name, host_cfg.host);
+            self.status_message = format!(
+                "Connecting to router [{}] ({})...",
+                host_cfg.name, host_cfg.host
+            );
 
             // Reset current view models
             self.system_resource = SystemResource::default();
@@ -203,7 +206,9 @@ impl App {
 
     pub fn open_ping_prompt(&mut self) {
         let default_target = self.get_selected_ip_or_default();
-        self.ping_state = PingState::InputtingTarget { input: default_target };
+        self.ping_state = PingState::InputtingTarget {
+            input: default_target,
+        };
     }
 
     pub fn trigger_ping(&mut self, target: String, tx: mpsc::Sender<AppEvent>) {
@@ -211,7 +216,9 @@ impl App {
             self.ping_state = PingState::Inactive;
             return;
         }
-        self.ping_state = PingState::Running { target: target.clone() };
+        self.ping_state = PingState::Running {
+            target: target.clone(),
+        };
         let client = self.client.clone();
 
         tokio::spawn(async move {
@@ -225,7 +232,12 @@ impl App {
         match self.active_tab {
             Tab::IpAddresses => {
                 if let Some(item) = self.filtered_ip_addresses().get(self.selected_index) {
-                    return item.address.split('/').next().unwrap_or("8.8.8.8").to_string();
+                    return item
+                        .address
+                        .split('/')
+                        .next()
+                        .unwrap_or("8.8.8.8")
+                        .to_string();
                 }
             }
             Tab::IpRoutes => {
@@ -234,7 +246,12 @@ impl App {
                         return item.gateway.clone();
                     }
                     if !item.dst_address.is_empty() && item.dst_address != "0.0.0.0/0" {
-                        return item.dst_address.split('/').next().unwrap_or("8.8.8.8").to_string();
+                        return item
+                            .dst_address
+                            .split('/')
+                            .next()
+                            .unwrap_or("8.8.8.8")
+                            .to_string();
                     }
                 }
             }
@@ -286,16 +303,18 @@ impl App {
             let neighbors = client.fetch_neighbors().await.ok();
             let logs = client.fetch_logs().await.ok();
 
-            let _ = tx.send(AppEvent::DataLoaded {
-                system,
-                interfaces,
-                ip_addresses,
-                ip_routes,
-                dhcp_leases,
-                firewall_rules,
-                neighbors,
-                logs,
-            }).await;
+            let _ = tx
+                .send(AppEvent::DataLoaded {
+                    system,
+                    interfaces,
+                    ip_addresses,
+                    ip_routes,
+                    dhcp_leases,
+                    firewall_rules,
+                    neighbors,
+                    logs,
+                })
+                .await;
         });
     }
 
@@ -310,14 +329,46 @@ impl App {
         neighbors: Option<Vec<Neighbor>>,
         logs: Option<Vec<LogEntry>>,
     ) {
-        if let Some(res) = system { if !res.board_name.is_empty() || !res.version.is_empty() { self.system_resource = res; } }
-        if let Some(ifaces) = interfaces { if !ifaces.is_empty() { self.interfaces = ifaces; } }
-        if let Some(addrs) = ip_addresses { if !addrs.is_empty() { self.ip_addresses = addrs; } }
-        if let Some(routes) = ip_routes { if !routes.is_empty() { self.ip_routes = routes; } }
-        if let Some(dhcp) = dhcp_leases { if !dhcp.is_empty() { self.dhcp_leases = dhcp; } }
-        if let Some(fw) = firewall_rules { if !fw.is_empty() { self.firewall_rules = fw; } }
-        if let Some(neigh) = neighbors { if !neigh.is_empty() { self.neighbors = neigh; } }
-        if let Some(l) = logs { if !l.is_empty() { self.logs = l; } }
+        if let Some(res) = system {
+            if !res.board_name.is_empty() || !res.version.is_empty() {
+                self.system_resource = res;
+            }
+        }
+        if let Some(ifaces) = interfaces {
+            if !ifaces.is_empty() {
+                self.interfaces = ifaces;
+            }
+        }
+        if let Some(addrs) = ip_addresses {
+            if !addrs.is_empty() {
+                self.ip_addresses = addrs;
+            }
+        }
+        if let Some(routes) = ip_routes {
+            if !routes.is_empty() {
+                self.ip_routes = routes;
+            }
+        }
+        if let Some(dhcp) = dhcp_leases {
+            if !dhcp.is_empty() {
+                self.dhcp_leases = dhcp;
+            }
+        }
+        if let Some(fw) = firewall_rules {
+            if !fw.is_empty() {
+                self.firewall_rules = fw;
+            }
+        }
+        if let Some(neigh) = neighbors {
+            if !neigh.is_empty() {
+                self.neighbors = neigh;
+            }
+        }
+        if let Some(l) = logs {
+            if !l.is_empty() {
+                self.logs = l;
+            }
+        }
 
         self.is_loading = false;
         self.status_message = "✅ Data successfully updated via SSH.".to_string();
@@ -389,15 +440,25 @@ impl App {
     }
 
     pub fn next_tab(&mut self) {
-        let current_idx = Tab::ALL.iter().position(|&t| t == self.active_tab).unwrap_or(0);
+        let current_idx = Tab::ALL
+            .iter()
+            .position(|&t| t == self.active_tab)
+            .unwrap_or(0);
         let next_idx = (current_idx + 1) % Tab::ALL.len();
         self.active_tab = Tab::ALL[next_idx];
         self.selected_index = 0;
     }
 
     pub fn prev_tab(&mut self) {
-        let current_idx = Tab::ALL.iter().position(|&t| t == self.active_tab).unwrap_or(0);
-        let prev_idx = if current_idx == 0 { Tab::ALL.len() - 1 } else { current_idx - 1 };
+        let current_idx = Tab::ALL
+            .iter()
+            .position(|&t| t == self.active_tab)
+            .unwrap_or(0);
+        let prev_idx = if current_idx == 0 {
+            Tab::ALL.len() - 1
+        } else {
+            current_idx - 1
+        };
         self.active_tab = Tab::ALL[prev_idx];
         self.selected_index = 0;
     }
@@ -443,9 +504,14 @@ impl App {
             self.interfaces.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.interfaces.iter().filter(|i| {
-                i.name.to_lowercase().contains(&q) || i.comment.to_lowercase().contains(&q) || i.mac_address.to_lowercase().contains(&q)
-            }).collect()
+            self.interfaces
+                .iter()
+                .filter(|i| {
+                    i.name.to_lowercase().contains(&q)
+                        || i.comment.to_lowercase().contains(&q)
+                        || i.mac_address.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -454,9 +520,14 @@ impl App {
             self.ip_addresses.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.ip_addresses.iter().filter(|i| {
-                i.address.to_lowercase().contains(&q) || i.interface.to_lowercase().contains(&q) || i.comment.to_lowercase().contains(&q)
-            }).collect()
+            self.ip_addresses
+                .iter()
+                .filter(|i| {
+                    i.address.to_lowercase().contains(&q)
+                        || i.interface.to_lowercase().contains(&q)
+                        || i.comment.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -465,9 +536,14 @@ impl App {
             self.ip_routes.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.ip_routes.iter().filter(|r| {
-                r.dst_address.to_lowercase().contains(&q) || r.gateway.to_lowercase().contains(&q) || r.comment.to_lowercase().contains(&q)
-            }).collect()
+            self.ip_routes
+                .iter()
+                .filter(|r| {
+                    r.dst_address.to_lowercase().contains(&q)
+                        || r.gateway.to_lowercase().contains(&q)
+                        || r.comment.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -476,9 +552,14 @@ impl App {
             self.dhcp_leases.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.dhcp_leases.iter().filter(|d| {
-                d.address.to_lowercase().contains(&q) || d.host_name.to_lowercase().contains(&q) || d.mac_address.to_lowercase().contains(&q)
-            }).collect()
+            self.dhcp_leases
+                .iter()
+                .filter(|d| {
+                    d.address.to_lowercase().contains(&q)
+                        || d.host_name.to_lowercase().contains(&q)
+                        || d.mac_address.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -487,9 +568,14 @@ impl App {
             self.firewall_rules.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.firewall_rules.iter().filter(|f| {
-                f.chain.to_lowercase().contains(&q) || f.action.to_lowercase().contains(&q) || f.comment.to_lowercase().contains(&q)
-            }).collect()
+            self.firewall_rules
+                .iter()
+                .filter(|f| {
+                    f.chain.to_lowercase().contains(&q)
+                        || f.action.to_lowercase().contains(&q)
+                        || f.comment.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -498,9 +584,16 @@ impl App {
             self.neighbors.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.neighbors.iter().filter(|n| {
-                n.interface.to_lowercase().contains(&q) || n.identity.to_lowercase().contains(&q) || n.ip_address.to_lowercase().contains(&q) || n.mac_address.to_lowercase().contains(&q) || n.board.to_lowercase().contains(&q)
-            }).collect()
+            self.neighbors
+                .iter()
+                .filter(|n| {
+                    n.interface.to_lowercase().contains(&q)
+                        || n.identity.to_lowercase().contains(&q)
+                        || n.ip_address.to_lowercase().contains(&q)
+                        || n.mac_address.to_lowercase().contains(&q)
+                        || n.board.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 
@@ -509,9 +602,12 @@ impl App {
             self.logs.iter().collect()
         } else {
             let q = self.filter_query.to_lowercase();
-            self.logs.iter().filter(|l| {
-                l.message.to_lowercase().contains(&q) || l.topics.to_lowercase().contains(&q)
-            }).collect()
+            self.logs
+                .iter()
+                .filter(|l| {
+                    l.message.to_lowercase().contains(&q) || l.topics.to_lowercase().contains(&q)
+                })
+                .collect()
         }
     }
 }

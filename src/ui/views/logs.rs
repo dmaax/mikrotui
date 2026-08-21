@@ -1,10 +1,10 @@
+use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
     widgets::{Block, Borders, Cell, Row, Table},
     Frame,
 };
-use crate::app::App;
 
 pub fn render_logs(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
@@ -38,7 +38,8 @@ pub fn render_logs(f: &mut Frame, app: &App, area: Rect) {
             Cell::from(item.time.as_str()).style(t.muted_text),
             Cell::from(item.topics.as_str()).style(topic_style.add_modifier(Modifier::BOLD)),
             Cell::from(item.message.as_str()),
-        ]).style(row_style)
+        ])
+        .style(row_style)
     });
 
     let table = Table::new(
@@ -50,7 +51,12 @@ pub fn render_logs(f: &mut Frame, app: &App, area: Rect) {
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).border_style(t.border).title(format!(" System Logs - Live Stream ({}) ", logs.len())));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(t.border)
+            .title(format!(" System Logs - Live Stream ({}) ", logs.len())),
+    );
 
     f.render_widget(table, area);
 }

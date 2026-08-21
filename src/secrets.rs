@@ -41,7 +41,9 @@ pub fn read_from_stdin() -> Result<String> {
 
 /// Read a password from the environment, if set and non-empty.
 pub fn read_from_env() -> Option<String> {
-    std::env::var("MIKROTUI_PASSWORD").ok().filter(|v| !v.is_empty())
+    std::env::var("MIKROTUI_PASSWORD")
+        .ok()
+        .filter(|v| !v.is_empty())
 }
 
 /// Prompt interactively. Only valid before the TUI takes over the terminal.
@@ -170,8 +172,14 @@ mod tests {
 
     #[test]
     fn account_id_is_stable_and_alias_independent() {
-        assert_eq!(account_id("admin", "192.168.88.1", 22), "admin@192.168.88.1:22");
-        assert_eq!(account_id("admin", "192.168.88.1", 2222), "admin@192.168.88.1:2222");
+        assert_eq!(
+            account_id("admin", "192.168.88.1", 22),
+            "admin@192.168.88.1:22"
+        );
+        assert_eq!(
+            account_id("admin", "192.168.88.1", 2222),
+            "admin@192.168.88.1:2222"
+        );
     }
 
     #[test]

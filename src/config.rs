@@ -23,7 +23,11 @@ pub struct HostConfig {
     pub obfuscated_password: Option<String>,
 
     /// The name this field had before it was renamed to say what it actually is.
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "enc_password")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "enc_password"
+    )]
     legacy_enc_password: Option<String>,
 }
 

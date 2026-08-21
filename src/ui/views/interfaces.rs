@@ -1,18 +1,28 @@
+use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
     widgets::{Block, Borders, Cell, Row, Table},
     Frame,
 };
-use crate::app::App;
 
 pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let interfaces = app.filtered_interfaces();
 
-    let header_cells = ["ID", "R", "Interface Name", "Type", "MTU", "MAC Address", "Rx Packets", "Tx Packets", "Comment"]
-        .iter()
-        .map(|h| Cell::from(*h).style(t.header_cell));
+    let header_cells = [
+        "ID",
+        "R",
+        "Interface Name",
+        "Type",
+        "MTU",
+        "MAC Address",
+        "Rx Packets",
+        "Tx Packets",
+        "Comment",
+    ]
+    .iter()
+    .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let rows = interfaces.iter().enumerate().map(|(idx, i)| {
@@ -37,7 +47,8 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
             Cell::from(format!("{}", i.rx_packet)),
             Cell::from(format!("{}", i.tx_packet)),
             Cell::from(i.comment.as_str()).style(t.muted_text),
-        ]).style(row_style)
+        ])
+        .style(row_style)
     });
 
     let table = Table::new(
@@ -55,7 +66,12 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).border_style(t.border).title(format!(" Network Interfaces ({}) ", interfaces.len())));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(t.border)
+            .title(format!(" Network Interfaces ({}) ", interfaces.len())),
+    );
 
     f.render_widget(table, area);
 }

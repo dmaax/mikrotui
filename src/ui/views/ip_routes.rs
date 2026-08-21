@@ -1,18 +1,26 @@
+use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
     widgets::{Block, Borders, Cell, Row, Table},
     Frame,
 };
-use crate::app::App;
 
 pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let routes = app.filtered_ip_routes();
 
-    let header_cells = ["ID", "Flags", "Dst. Address", "Gateway", "Distance", "Routing Table", "Comment"]
-        .iter()
-        .map(|h| Cell::from(*h).style(t.header_cell));
+    let header_cells = [
+        "ID",
+        "Flags",
+        "Dst. Address",
+        "Gateway",
+        "Distance",
+        "Routing Table",
+        "Comment",
+    ]
+    .iter()
+    .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let rows = routes.iter().enumerate().map(|(idx, item)| {
@@ -39,7 +47,8 @@ pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
             Cell::from(format!("{}", item.distance)),
             Cell::from(item.routing_table.as_str()),
             Cell::from(item.comment.as_str()).style(t.muted_text),
-        ]).style(row_style)
+        ])
+        .style(row_style)
     });
 
     let table = Table::new(
@@ -55,7 +64,12 @@ pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).border_style(t.border).title(format!(" Routing Table - /ip route ({}) ", routes.len())));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(t.border)
+            .title(format!(" Routing Table - /ip route ({}) ", routes.len())),
+    );
 
     f.render_widget(table, area);
 }

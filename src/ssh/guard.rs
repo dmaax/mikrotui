@@ -61,11 +61,18 @@ const MUTATING_ACTIONS: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GuardError {
     /// The statement names an action that writes to the router.
-    Mutating { statement: String, action: String },
+    Mutating {
+        statement: String,
+        action: String,
+    },
     /// The statement does not name any recognised read-only action.
-    NotRecognised { statement: String },
+    NotRecognised {
+        statement: String,
+    },
     /// Scripting constructs (`:execute`, `:local`, ...) can hide arbitrary commands.
-    Scripting { statement: String },
+    Scripting {
+        statement: String,
+    },
     Empty,
 }
 
@@ -116,7 +123,10 @@ fn path_words(statement: &str) -> Vec<String> {
         .split_whitespace()
         .take_while(|tok| !tok.contains('='))
         .flat_map(|tok| tok.split('/'))
-        .map(|w| w.trim_matches(|c: char| c == '[' || c == ']').to_lowercase())
+        .map(|w| {
+            w.trim_matches(|c: char| c == '[' || c == ']')
+                .to_lowercase()
+        })
         .filter(|w| !w.is_empty())
         .collect()
 }
@@ -133,14 +143,20 @@ fn check_statement(statement: &str) -> Result<(), GuardError> {
 
     let words = path_words(statement);
 
-    if let Some(action) = words.iter().find(|w| MUTATING_ACTIONS.contains(&w.as_str())) {
+    if let Some(action) = words
+        .iter()
+        .find(|w| MUTATING_ACTIONS.contains(&w.as_str()))
+    {
         return Err(GuardError::Mutating {
             statement: statement.to_string(),
             action: action.clone(),
         });
     }
 
-    if !words.iter().any(|w| READ_ONLY_ACTIONS.contains(&w.as_str())) {
+    if !words
+        .iter()
+        .any(|w| READ_ONLY_ACTIONS.contains(&w.as_str()))
+    {
         return Err(GuardError::NotRecognised {
             statement: statement.to_string(),
         });
@@ -217,13 +233,17 @@ mod tests {
     fn rejects_write_hidden_after_a_read() {
         assert!(!allowed("/ip address print; /system reboot"));
         assert!(!allowed("/ip address print\n/system reboot"));
-        assert!(!allowed("/ip firewall filter print; /ip/firewall/filter/remove 0"));
+        assert!(!allowed(
+            "/ip firewall filter print; /ip/firewall/filter/remove 0"
+        ));
     }
 
     #[test]
     fn rejects_scripting_wrappers() {
         assert!(!allowed(":execute script=\"/system reboot\""));
-        assert!(!allowed("/ip address print; :execute script=\"/system reboot\""));
+        assert!(!allowed(
+            "/ip address print; :execute script=\"/system reboot\""
+        ));
         assert!(!allowed(":put [/system reboot]"));
     }
 

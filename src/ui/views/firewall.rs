@@ -1,18 +1,29 @@
+use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
     widgets::{Block, Borders, Cell, Row, Table},
     Frame,
 };
-use crate::app::App;
 
 pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let rules = app.filtered_firewall_rules();
 
-    let header_cells = ["ID", "Chain", "Action", "Src. Address", "Dst. Address", "Proto", "Dst. Port", "Bytes", "Packets", "Comment"]
-        .iter()
-        .map(|h| Cell::from(*h).style(t.header_cell));
+    let header_cells = [
+        "ID",
+        "Chain",
+        "Action",
+        "Src. Address",
+        "Dst. Address",
+        "Proto",
+        "Dst. Port",
+        "Bytes",
+        "Packets",
+        "Comment",
+    ]
+    .iter()
+    .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let rows = rules.iter().enumerate().map(|(idx, item)| {
@@ -41,7 +52,8 @@ pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
             Cell::from(format!("{}", item.bytes)),
             Cell::from(format!("{}", item.packets)),
             Cell::from(item.comment.as_str()).style(t.muted_text),
-        ]).style(row_style)
+        ])
+        .style(row_style)
     });
 
     let table = Table::new(
@@ -60,7 +72,15 @@ pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).border_style(t.border).title(format!(" Firewall Filter Rules (Read-Only) ({}) ", rules.len())));
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(t.border)
+            .title(format!(
+                " Firewall Filter Rules (Read-Only) ({}) ",
+                rules.len()
+            )),
+    );
 
     f.render_widget(table, area);
 }

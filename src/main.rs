@@ -122,7 +122,11 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
             },
-            Commands::Dump { resource, format, demo } => {
+            Commands::Dump {
+                resource,
+                format,
+                demo,
+            } => {
                 run_dump_command(&cli, resource, format, *demo).await?;
                 return Ok(());
             }
@@ -202,15 +206,16 @@ async fn connect_interactively(mut ssh_config: SshConfig) -> Result<RouterClient
                         ref key_type,
                         ref fingerprint,
                     } => {
-                        println!("\n🔑 The authenticity of host '{host}:{port}' cannot be established.");
+                        println!(
+                            "\n🔑 The authenticity of host '{host}:{port}' cannot be established."
+                        );
                         println!("   {key_type} key fingerprint is SHA256:{fingerprint}");
                         println!("   Verify it on the router with: /ip ssh print\n");
 
-                        let accept = inquire::Confirm::new(
-                            "Accept this key and add it to known_hosts?",
-                        )
-                        .with_default(false)
-                        .prompt()?;
+                        let accept =
+                            inquire::Confirm::new("Accept this key and add it to known_hosts?")
+                                .with_default(false)
+                                .prompt()?;
 
                         if !accept {
                             return Err(anyhow!("host key rejected; not connecting"));
@@ -225,13 +230,19 @@ async fn connect_interactively(mut ssh_config: SshConfig) -> Result<RouterClient
     }
 }
 
-async fn run_dump_command(cli: &CliArgs, resource: &str, format: &str, force_demo: bool) -> Result<()> {
+async fn run_dump_command(
+    cli: &CliArgs,
+    resource: &str,
+    format: &str,
+    force_demo: bool,
+) -> Result<()> {
     // `--demo` on the subcommand has to be honoured *before* host selection, otherwise
     // it still walks into the interactive first-run wizard.
     let ssh_config = if force_demo || cli.demo {
         SshConfig::default()
     } else {
-        determine_ssh_config(cli, false)?.ok_or_else(|| anyhow!("No host configuration selected"))?
+        determine_ssh_config(cli, false)?
+            .ok_or_else(|| anyhow!("No host configuration selected"))?
     };
 
     let client = RouterClient::new(ssh_config);
@@ -492,10 +503,22 @@ async fn run_app(
                     neighbors,
                     logs,
                 } => {
-                    app.apply_loaded_data(system, interfaces, ip_addresses, ip_routes, dhcp_leases, firewall_rules, neighbors, logs);
+                    app.apply_loaded_data(
+                        system,
+                        interfaces,
+                        ip_addresses,
+                        ip_routes,
+                        dhcp_leases,
+                        firewall_rules,
+                        neighbors,
+                        logs,
+                    );
                 }
                 app::AppEvent::PingFinished(result) => {
-                    app.status_message = format!("✅ Ping completed for {}: {}% loss", result.target, result.packet_loss_pct);
+                    app.status_message = format!(
+                        "✅ Ping completed for {}: {}% loss",
+                        result.target, result.packet_loss_pct
+                    );
                     app.ping_state = PingState::Completed { result };
                 }
             }
