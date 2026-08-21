@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 use russh::{client, ChannelMsg};
 use russh_keys::key;
 use crate::models::*;
+use crate::ssh::guard;
 use crate::ssh::parser;
 
 #[derive(Clone, Debug)]
@@ -537,14 +538,7 @@ impl RouterClient {
     }
 
     pub async fn exec_command(&self, cmd: &str) -> Result<String> {
-        let trimmed = cmd.trim();
-        let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-
-        for t in tokens {
-            if t == "add" || t == "set" || t == "remove" || t == "enable" || t == "disable" {
-                return Err(anyhow!("READ-ONLY ENFORCED: Write operations are disabled in MikroTUI Phase 1!"));
-            }
-        }
+        guard::ensure_read_only(cmd).map_err(|e| anyhow!(e))?;
 
         match self.try_exec_command(cmd).await {
             Ok(output) if !output.is_empty() => Ok(output),
