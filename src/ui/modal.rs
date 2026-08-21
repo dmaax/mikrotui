@@ -98,7 +98,7 @@ fn get_modal_content(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Tab::Interfaces => {
             let list = app.filtered_interfaces();
-            if let Some(i) = list.get(app.selected_index) {
+            if let Some(i) = app.selection_in(list.len()).and_then(|i| list.get(i)) {
                 let lines = vec![
                     Line::from(vec![
                         Span::styled("Internal ID: ", t.accent.add_modifier(Modifier::BOLD)),
@@ -178,7 +178,7 @@ fn get_modal_content(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Tab::IpAddresses => {
             let list = app.filtered_ip_addresses();
-            if let Some(item) = list.get(app.selected_index) {
+            if let Some(item) = app.selection_in(list.len()).and_then(|i| list.get(i)) {
                 let lines = vec![
                     Line::from(vec![
                         Span::styled("Internal ID: ", t.accent.add_modifier(Modifier::BOLD)),
@@ -244,7 +244,7 @@ fn get_modal_content(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Tab::IpRoutes => {
             let list = app.filtered_ip_routes();
-            if let Some(item) = list.get(app.selected_index) {
+            if let Some(item) = app.selection_in(list.len()).and_then(|i| list.get(i)) {
                 let lines = vec![
                     Line::from(vec![
                         Span::styled("Internal ID: ", t.accent.add_modifier(Modifier::BOLD)),
@@ -312,7 +312,7 @@ fn get_modal_content(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Tab::DhcpLeases => {
             let list = app.filtered_dhcp_leases();
-            if let Some(item) = list.get(app.selected_index) {
+            if let Some(item) = app.selection_in(list.len()).and_then(|i| list.get(i)) {
                 let lines = vec![
                     Line::from(vec![
                         Span::styled("Internal ID: ", t.accent.add_modifier(Modifier::BOLD)),
@@ -363,7 +363,7 @@ fn get_modal_content(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Tab::Firewall => {
             let list = app.filtered_firewall_rules();
-            if let Some(item) = list.get(app.selected_index) {
+            if let Some(item) = app.selection_in(list.len()).and_then(|i| list.get(i)) {
                 let lines = vec![
                     Line::from(vec![
                         Span::styled("Rule ID: ", t.accent.add_modifier(Modifier::BOLD)),
@@ -459,7 +459,7 @@ fn get_modal_content(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Tab::Neighbors => {
             let list = app.filtered_neighbors();
-            if let Some(item) = list.get(app.selected_index) {
+            if let Some(item) = app.selection_in(list.len()).and_then(|i| list.get(i)) {
                 let lines = vec![
                     Line::from(vec![
                         Span::styled("Internal ID: ", t.accent.add_modifier(Modifier::BOLD)),
@@ -513,7 +513,7 @@ fn get_modal_content(app: &App) -> (String, Vec<Line<'static>>) {
         }
         Tab::Logs => {
             let list = app.filtered_logs();
-            if let Some(item) = list.get(app.selected_index) {
+            if let Some(item) = app.selection_in(list.len()).and_then(|i| list.get(i)) {
                 let lines = vec![
                     Line::from(vec![
                         Span::styled("Event Timestamp: ", t.accent.add_modifier(Modifier::BOLD)),

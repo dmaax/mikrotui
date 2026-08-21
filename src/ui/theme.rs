@@ -10,7 +10,7 @@ pub enum ThemeKind {
 impl ThemeKind {
     pub fn name(&self) -> &'static str {
         match self {
-            ThemeKind::WinBoxDark => "WinBox Dark (Padrão)",
+            ThemeKind::WinBoxDark => "WinBox Dark (Default)",
             ThemeKind::NordSlate => "Nord Slate",
             ThemeKind::HighContrast => "Alto Contraste",
         }
