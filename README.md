@@ -122,8 +122,9 @@ any credential, the same way `ssh` does.
 - **A changed key is always fatal.** MikroTUI never offers to accept it — that is the signal
   of an interception. If the router was genuinely reinstalled, delete the offending line from
   `known_hosts` and reconnect.
-- `--accept-new-hostkey` records an unknown key without asking (for scripts). It still refuses
-  a *changed* key.
+- `--accept-new-hostkey` records an unknown key without asking (for scripts). It refuses
+  anything that is not a genuine first contact: a changed key, or a host already on file
+  offering a key algorithm the file has not recorded.
 - `--known-hosts <PATH>` uses a different file.
 
 Inside the TUI there is no way to prompt, so switching host (`Ctrl+O`) to a router whose key is
@@ -137,9 +138,14 @@ names a read-only action (`print`, `get`, `find`, `export`, `monitor`, `ping`, `
 slash syntax (`/ip/address/set`), commands chained after a read (`... print; /system reboot`),
 `/system reboot` and `/system reset-configuration`, and script wrappers (`:execute`).
 
+Command substitution (`[ ... ]`), script commands (`:execute`), `file=` arguments and
+RouterOS prefix abbreviations (`rem` for `remove`) are all refused, since each was a way
+around the check.
+
 > **This is a guard rail, not a permission boundary.** It runs on your machine, so it protects
-> you from mistakes, not the router from a determined user. The real guarantee is a RouterOS
-> account in the **`read` group** — give MikroTUI one of those rather than a full admin.
+> you from mistakes, not the router from a determined user. Do not rely on it to contain
+> someone who is trying to get past it. The real guarantee is a RouterOS account in the
+> **`read` group** — give MikroTUI one of those rather than a full admin.
 
 ### Credentials
 

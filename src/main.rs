@@ -18,7 +18,7 @@ use std::{io, path::PathBuf, time::Duration};
 
 use app::{App, InputMode, PingState};
 use config::AppConfig;
-use ssh::{HostKeyIssue, HostKeyPolicy, RouterClient, SshConfig};
+use ssh::{HostKeyPolicy, RouterClient, SshConfig};
 
 #[derive(Parser, Debug)]
 #[command(name = "mikrotui", version = env!("CARGO_PKG_VERSION"), about = "WinBox-style TUI for MikroTik RouterOS over SSH (read-only)")]
@@ -212,44 +212,44 @@ async fn connect_interactively(mut ssh_config: SshConfig) -> Result<RouterClient
                     return Err(err);
                 };
 
-                match issue {
-                    HostKeyIssue::Changed { .. } => {
-                        return Err(anyhow!("{issue}"));
-                    }
-                    HostKeyIssue::Unknown {
-                        ref host,
-                        port,
-                        ref key_type,
-                        ref fingerprint,
-                    } => {
-                        println!(
-                            "\n🔑 The authenticity of host '{host}:{port}' cannot be established."
-                        );
-                        println!("   {key_type} key fingerprint is {fingerprint}");
-                        println!("   Verify it on the router with: /ip ssh print\n");
+                // Only a host that has never been seen may be resolved by accepting
+                // the key. Anything else means known_hosts already has an opinion about
+                // this router, and re-learning would be exactly the downgrade an attacker
+                // wants.
+                if !issue.is_first_contact() {
+                    return Err(anyhow!("{issue}"));
+                }
 
-                        // Without a terminal there is nobody to answer, and inquire's own
-                        // "not a TTY" error says nothing about how to proceed. Report the
-                        // issue instead: it names --accept-new-hostkey.
-                        let accept = match inquire::Confirm::new(
-                            "Accept this key and add it to known_hosts?",
-                        )
+                println!(
+                    "\n🔑 The authenticity of host '{}:{}' cannot be established.",
+                    ssh_config.host, ssh_config.port
+                );
+                println!(
+                    "   {} key fingerprint is {}",
+                    issue.key_type(),
+                    issue.fingerprint()
+                );
+                println!("   Verify it on the router with: /ip ssh print\n");
+
+                // Without a terminal there is nobody to answer, and inquire's own
+                // "not a TTY" error says nothing about how to proceed. Report the
+                // issue instead: it names --accept-new-hostkey.
+                let accept =
+                    match inquire::Confirm::new("Accept this key and add it to known_hosts?")
                         .with_default(false)
                         .prompt()
-                        {
-                            Ok(answer) => answer,
-                            Err(inquire::InquireError::NotTTY) => return Err(anyhow!("{issue}")),
-                            Err(e) => return Err(e.into()),
-                        };
+                    {
+                        Ok(answer) => answer,
+                        Err(inquire::InquireError::NotTTY) => return Err(anyhow!("{issue}")),
+                        Err(e) => return Err(e.into()),
+                    };
 
-                        if !accept {
-                            return Err(anyhow!("host key rejected; not connecting"));
-                        }
-
-                        ssh_config.host_key_policy = HostKeyPolicy::AcceptNew;
-                        // Loop and retry, this time recording the key.
-                    }
+                if !accept {
+                    return Err(anyhow!("host key rejected; not connecting"));
                 }
+
+                ssh_config.host_key_policy = HostKeyPolicy::AcceptNew;
+                // Loop and retry, this time recording the key.
             }
         }
     }
@@ -515,12 +515,7 @@ async fn run_app(
     loop {
         // Process background events from Tokio channel
         while let Ok(event) = rx.try_recv() {
-            match event {
-                app::AppEvent::LoadFailed(err) => app.report_load_failure(err),
-                app::AppEvent::HostKeyVerified(v) => app.host_key_verified = v,
-                app::AppEvent::DataLoaded(data) => app.apply_loaded_data(*data),
-                app::AppEvent::PingFinished(result) => app.finish_ping(result),
-            }
+            app.handle_event(event);
         }
 
         terminal.draw(|f| ui::render(f, app))?;

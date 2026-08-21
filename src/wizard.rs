@@ -256,6 +256,14 @@ pub fn handle_first_time_run() -> Result<Option<SshConfig>> {
         run_add_host_wizard()?;
         if let Ok(config) = AppConfig::load() {
             if let Some(host) = config.hosts.first() {
+                if secrets::keyring_get(&host.account_id()).is_none()
+                    && host.file_password().is_some()
+                {
+                    eprintln!(
+                        "⚠️  Using the password stored in config.json. It is only obfuscated, \
+                         not encrypted — run 'mikrotui host migrate' to move it to the keyring."
+                    );
+                }
                 let pass = secrets::keyring_get(&host.account_id())
                     .or_else(|| host.file_password())
                     .map(Ok)

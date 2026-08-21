@@ -4,4 +4,4 @@ pub mod hostkey;
 pub mod parser;
 
 pub use client::*;
-pub use hostkey::{HostKeyIssue, HostKeyPolicy};
+pub use hostkey::HostKeyPolicy;
