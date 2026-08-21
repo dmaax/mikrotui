@@ -378,6 +378,10 @@ impl App {
             }
         }
 
+        // A refresh can return fewer rows than before (a lease expired, a rule was
+        // removed on the router), leaving the selection past the end of the new list.
+        self.clamp_selection();
+
         self.is_loading = false;
         self.status_message = "✅ Data successfully updated via SSH.".to_string();
     }
@@ -443,6 +447,7 @@ impl App {
             }
         }
 
+        self.clamp_selection();
         self.is_loading = false;
         Ok(())
     }
@@ -476,6 +481,15 @@ impl App {
     pub fn reset_scroll(&mut self) {
         self.selected_index = 0;
         self.table_offset.set(0);
+    }
+
+    /// Index of the highlighted row within a list of `len`, or `None` when it is empty.
+    ///
+    /// Read this rather than `selected_index` when rendering or acting on a row. A refresh
+    /// or a filter edit can shrink a list under a stale index, and the highlight, the
+    /// scroll position and the detail modal all have to agree on the same row.
+    pub fn selection_in(&self, len: usize) -> Option<usize> {
+        len.checked_sub(1).map(|last| self.selected_index.min(last))
     }
 
     /// Keep the selection inside the list.

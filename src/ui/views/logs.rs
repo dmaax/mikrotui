@@ -15,8 +15,10 @@ pub fn render_logs(f: &mut Frame, app: &App, area: Rect) {
         .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
+    let selected = app.selection_in(logs.len());
+
     let rows = logs.iter().enumerate().map(|(idx, item)| {
-        let is_selected = idx == app.selected_index;
+        let is_selected = Some(idx) == selected;
 
         let topic_style = if item.topics.contains("error") {
             t.danger

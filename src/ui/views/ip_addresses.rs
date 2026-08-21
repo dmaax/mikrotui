@@ -22,8 +22,10 @@ pub fn render_ip_addresses(f: &mut Frame, app: &App, area: Rect) {
     .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
+    let selected = app.selection_in(addresses.len());
+
     let rows = addresses.iter().enumerate().map(|(idx, item)| {
-        let is_selected = idx == app.selected_index;
+        let is_selected = Some(idx) == selected;
 
         let flags = format!(
             "{}{}",

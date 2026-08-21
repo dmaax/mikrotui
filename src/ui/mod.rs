@@ -70,7 +70,7 @@ pub fn render(f: &mut Frame, app: &App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::Tab;
+    use crate::app::{LoadedData, Tab};
     use crate::models::Interface;
     use crate::ssh::{RouterClient, SshConfig};
     use ratatui::{backend::TestBackend, Terminal};
@@ -172,6 +172,52 @@ mod tests {
         let out = screen(&app);
         assert!(out.contains("ether0") && out.contains("ether2"));
         assert!(out.contains("(3)"), "expected a plain count, got:\n{out}");
+    }
+
+    /// A refresh can return fewer rows than the last one. The selection has to come
+    /// back inside the list, or the detail modal and the ping target read a row that is
+    /// no longer there while a different row appears highlighted.
+    #[test]
+    fn a_shrinking_refresh_pulls_the_selection_back_into_range() {
+        let mut app = app_with_interfaces(200);
+        app.select_last();
+        assert_eq!(app.selected_index, 199);
+
+        let data = LoadedData {
+            interfaces: Some(
+                (0..5)
+                    .map(|i| Interface {
+                        name: format!("ether{i}"),
+                        ..Default::default()
+                    })
+                    .collect(),
+            ),
+            ..Default::default()
+        };
+        app.apply_loaded_data(data);
+
+        assert_eq!(
+            app.selected_index, 4,
+            "selection should land on the last surviving row"
+        );
+        assert_eq!(app.selection_in(app.interfaces.len()), Some(4));
+
+        // And the row that is highlighted is the one still on screen.
+        let out = screen(&app);
+        assert!(out.contains("ether4"));
+        assert!(!out.contains("ether199"));
+    }
+
+    /// The highlight and the scroll position must never disagree about the row.
+    #[test]
+    fn selection_in_is_clamped_and_empty_safe() {
+        let app = app_with_interfaces(10);
+        assert_eq!(app.selection_in(10), Some(0));
+        assert_eq!(app.selection_in(0), None, "empty list selects nothing");
+
+        let mut app = app_with_interfaces(10);
+        app.selected_index = 999;
+        assert_eq!(app.selection_in(10), Some(9));
     }
 
     #[test]

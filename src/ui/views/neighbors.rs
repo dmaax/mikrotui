@@ -25,8 +25,10 @@ pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
 
     let neighbors = app.filtered_neighbors();
 
+    let selected = app.selection_in(neighbors.len());
+
     let rows = neighbors.iter().enumerate().map(|(idx, n)| {
-        let is_selected = idx == app.selected_index;
+        let is_selected = Some(idx) == selected;
         let row_style = if is_selected {
             t.selected_row
         } else {

@@ -44,11 +44,9 @@ pub fn render_scrollable_table<'a>(
     let viewport = area.height.saturating_sub(CHROME_ROWS).max(1) as usize;
     app.viewport_rows.set(viewport);
 
-    // An out-of-range selection would leave no row highlighted; the filter can shrink the
-    // list between a keypress and this frame.
-    let selected = total
-        .checked_sub(1)
-        .map(|last| app.selected_index.min(last));
+    // Same clamped index the rows used for their highlight, so the row that is
+    // highlighted and the row scrolled into view are always the same one.
+    let selected = app.selection_in(total);
 
     // Resolve the offset here rather than letting the widget adjust it internally, so the
     // range in the title matches what is actually on screen in this same frame.

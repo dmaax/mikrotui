@@ -25,8 +25,10 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
     .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
+    let selected = app.selection_in(interfaces.len());
+
     let rows = interfaces.iter().enumerate().map(|(idx, i)| {
-        let is_selected = idx == app.selected_index;
+        let is_selected = Some(idx) == selected;
 
         let status = if i.running { "R" } else { " " };
         let status_style = if i.running { t.success } else { t.muted_text };
