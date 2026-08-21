@@ -3,6 +3,7 @@ use crate::models::*;
 use crate::ssh::{RouterClient, SshConfig};
 use crate::ui::theme::Theme;
 use anyhow::Result;
+use std::cell::Cell;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +99,13 @@ pub enum AppEvent {
 pub struct App {
     pub active_tab: Tab,
     pub selected_index: usize,
+    /// First row drawn by the active table, carried between frames so scrolling is
+    /// continuous. `Cell` because rendering takes `&App` while the table widget needs to
+    /// report back the offset it settled on.
+    pub table_offset: Cell<usize>,
+    /// How many rows the active table last had room for. Written by the renderer, read by
+    /// the page-up/page-down handlers, which cannot otherwise know the terminal height.
+    pub viewport_rows: Cell<usize>,
     /// Whether the current session's host key matched `known_hosts`.
     pub host_key_verified: bool,
     pub input_mode: InputMode,
@@ -133,6 +141,8 @@ impl App {
         Self {
             active_tab: Tab::System,
             selected_index: 0,
+            table_offset: Cell::new(0),
+            viewport_rows: Cell::new(1),
             host_key_verified,
             input_mode: InputMode::Normal,
             filter_query: String::new(),
@@ -368,6 +378,10 @@ impl App {
             }
         }
 
+        // A refresh can return fewer rows than before (a lease expired, a rule was
+        // removed on the router), leaving the selection past the end of the new list.
+        self.clamp_selection();
+
         self.is_loading = false;
         self.status_message = "✅ Data successfully updated via SSH.".to_string();
     }
@@ -433,6 +447,7 @@ impl App {
             }
         }
 
+        self.clamp_selection();
         self.is_loading = false;
         Ok(())
     }
@@ -444,7 +459,7 @@ impl App {
             .unwrap_or(0);
         let next_idx = (current_idx + 1) % Tab::ALL.len();
         self.active_tab = Tab::ALL[next_idx];
-        self.selected_index = 0;
+        self.reset_scroll();
     }
 
     pub fn prev_tab(&mut self) {
@@ -458,7 +473,56 @@ impl App {
             current_idx - 1
         };
         self.active_tab = Tab::ALL[prev_idx];
+        self.reset_scroll();
+    }
+
+    /// Return to the top of the list. Each tab holds a different number of rows, so a
+    /// scroll offset carried across a tab switch would point at nothing.
+    pub fn reset_scroll(&mut self) {
         self.selected_index = 0;
+        self.table_offset.set(0);
+    }
+
+    /// Index of the highlighted row within a list of `len`, or `None` when it is empty.
+    ///
+    /// Read this rather than `selected_index` when rendering or acting on a row. A refresh
+    /// or a filter edit can shrink a list under a stale index, and the highlight, the
+    /// scroll position and the detail modal all have to agree on the same row.
+    pub fn selection_in(&self, len: usize) -> Option<usize> {
+        len.checked_sub(1).map(|last| self.selected_index.min(last))
+    }
+
+    /// Keep the selection inside the list.
+    ///
+    /// Typing into the filter shrinks the list under a selection that may sit past its new
+    /// end, which would leave no row highlighted and make Enter open an empty detail modal.
+    pub fn clamp_selection(&mut self) {
+        let len = self.current_tab_len();
+        self.selected_index = self.selected_index.min(len.saturating_sub(1));
+    }
+
+    /// Move down by one screenful, stopping at the last row.
+    pub fn page_down(&mut self) {
+        let len = self.current_tab_len();
+        if len == 0 {
+            return;
+        }
+        let page = self.viewport_rows.get().max(1);
+        self.selected_index = (self.selected_index + page).min(len - 1);
+    }
+
+    /// Move up by one screenful, stopping at the first row.
+    pub fn page_up(&mut self) {
+        let page = self.viewport_rows.get().max(1);
+        self.selected_index = self.selected_index.saturating_sub(page);
+    }
+
+    pub fn select_first(&mut self) {
+        self.selected_index = 0;
+    }
+
+    pub fn select_last(&mut self) {
+        self.selected_index = self.current_tab_len().saturating_sub(1);
     }
 
     pub fn select_next(&mut self) {

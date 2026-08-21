@@ -21,6 +21,7 @@ pub fn render_statusbar(f: &mut Frame, app: &App, area: Rect) {
     let status_spans = vec![
         Span::styled(" [Tab] Switch ", t.accent),
         Span::styled(" [Enter] Details ", t.title),
+        Span::styled(" [PgUp/PgDn] Scroll ", t.accent),
         Span::styled(" [p] Ping ", t.success),
         Span::styled(" [Ctrl+O] Switch Host ", t.title),
         Span::styled(" [/] Search ", t.warning),

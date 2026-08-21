@@ -2,7 +2,7 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
@@ -23,8 +23,10 @@ pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
     .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
+    let selected = app.selection_in(routes.len());
+
     let rows = routes.iter().enumerate().map(|(idx, item)| {
-        let is_selected = idx == app.selected_index;
+        let is_selected = Some(idx) == selected;
 
         let flags = format!(
             "{}{}{}",
@@ -51,9 +53,14 @@ pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
         .style(row_style)
     });
 
-    let table = Table::new(
-        rows,
-        [
+    super::render_scrollable_table(
+        f,
+        app,
+        area,
+        "Routing Table - /ip route",
+        header,
+        rows.collect(),
+        vec![
             Constraint::Length(4),
             Constraint::Length(6),
             Constraint::Length(22),
@@ -62,14 +69,5 @@ pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(15),
             Constraint::Min(15),
         ],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border)
-            .title(format!(" Routing Table - /ip route ({}) ", routes.len())),
     );
-
-    f.render_widget(table, area);
 }

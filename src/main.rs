@@ -644,6 +644,18 @@ async fn run_app(
                         (KeyCode::Down, _) | (KeyCode::Char('j'), _) => app.select_next(),
                         (KeyCode::Up, _) | (KeyCode::Char('k'), _) => app.select_prev(),
 
+                        // Scrolling by screenfuls and jumping to either end. Lists longer
+                        // than the terminal are common (firewall rules, DHCP leases, logs)
+                        // and row-by-row is not a practical way to cross them.
+                        (KeyCode::PageDown, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
+                            app.page_down()
+                        }
+                        (KeyCode::PageUp, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) => {
+                            app.page_up()
+                        }
+                        (KeyCode::Home, _) | (KeyCode::Char('g'), _) => app.select_first(),
+                        (KeyCode::End, _) | (KeyCode::Char('G'), _) => app.select_last(),
+
                         // Filter mode
                         (KeyCode::Char('/'), _) => {
                             app.input_mode = InputMode::Filtering;
@@ -663,9 +675,12 @@ async fn run_app(
                         }
                         KeyCode::Backspace => {
                             app.filter_query.pop();
+                            // The list just changed size under the selection.
+                            app.clamp_selection();
                         }
                         KeyCode::Char(c) => {
                             app.filter_query.push(c);
+                            app.clamp_selection();
                         }
                         _ => {}
                     },

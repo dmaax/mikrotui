@@ -97,6 +97,8 @@ mikrotui exec "/ip address print"
 | :--- | :--- |
 | **Tab / Shift+Tab** | Switch active menu tab (or use `←` / `→` Arrow keys / `h` / `l`) |
 | **↑ / ↓** (or `k` / `j`) | Navigate up / down through table rows |
+| **PgUp / PgDn** | Scroll a whole screenful (also `Ctrl+B` / `Ctrl+F`) |
+| **Home / End** (or `g` / `G`) | Jump to the first / last row |
 | **Enter** | Open Item Details modal (view complete properties & comments) |
 | **p** | Open interactive Ping Diagnostic tool (`/ping <target>`) |
 | **/** | Activate live filter search (type query, `Enter`/`Esc` to finish) |

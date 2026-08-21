@@ -2,7 +2,7 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
@@ -25,8 +25,10 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
     .map(|h| Cell::from(*h).style(t.header_cell));
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
+    let selected = app.selection_in(interfaces.len());
+
     let rows = interfaces.iter().enumerate().map(|(idx, i)| {
-        let is_selected = idx == app.selected_index;
+        let is_selected = Some(idx) == selected;
 
         let status = if i.running { "R" } else { " " };
         let status_style = if i.running { t.success } else { t.muted_text };
@@ -51,9 +53,14 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
         .style(row_style)
     });
 
-    let table = Table::new(
-        rows,
-        [
+    super::render_scrollable_table(
+        f,
+        app,
+        area,
+        "Network Interfaces",
+        header,
+        rows.collect(),
+        vec![
             Constraint::Length(4),
             Constraint::Length(3),
             Constraint::Length(20),
@@ -64,14 +71,5 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(14),
             Constraint::Min(15),
         ],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border)
-            .title(format!(" Network Interfaces ({}) ", interfaces.len())),
     );
-
-    f.render_widget(table, area);
 }
