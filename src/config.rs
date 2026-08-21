@@ -22,6 +22,10 @@ pub struct HostConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub obfuscated_password: Option<String>,
 
+    /// Private key to authenticate with instead of a password.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_file: Option<PathBuf>,
+
     /// The name this field had before it was renamed to say what it actually is.
     #[serde(
         default,
@@ -38,6 +42,7 @@ impl HostConfig {
             host,
             port,
             user,
+            identity_file: None,
             obfuscated_password: None,
             legacy_enc_password: None,
         }

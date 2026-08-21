@@ -242,7 +242,10 @@ impl App {
                 port: host_cfg.port,
                 user: host_cfg.user.clone(),
                 pass: from_keyring.or_else(|| host_cfg.file_password()),
-                key_path: None,
+                // A key configured for this host is reused; an encrypted one cannot be
+                // opened from here, since the TUI has nowhere to ask for the passphrase.
+                key_path: host_cfg.identity_file.clone(),
+                key_passphrase: None,
                 demo_mode: false,
                 host_key_policy: crate::ssh::HostKeyPolicy::Strict,
                 known_hosts: self.client.config.known_hosts.clone(),
