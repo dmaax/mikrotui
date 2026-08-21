@@ -59,7 +59,7 @@ pub fn parse_routeros_output(raw_input: &str) -> Vec<HashMap<String, String>> {
     let mut current_item: Option<HashMap<String, String>> = None;
 
     for line in lines {
-        let is_new_item = line.chars().next().map_or(false, |c| c.is_ascii_digit());
+        let is_new_item = line.chars().next().is_some_and(|c| c.is_ascii_digit());
 
         if is_new_item {
             if let Some(item) = current_item.take() {

@@ -493,27 +493,7 @@ async fn run_app(
             match event {
                 app::AppEvent::LoadFailed(err) => app.report_load_failure(err),
                 app::AppEvent::HostKeyVerified(v) => app.host_key_verified = v,
-                app::AppEvent::DataLoaded {
-                    system,
-                    interfaces,
-                    ip_addresses,
-                    ip_routes,
-                    dhcp_leases,
-                    firewall_rules,
-                    neighbors,
-                    logs,
-                } => {
-                    app.apply_loaded_data(
-                        system,
-                        interfaces,
-                        ip_addresses,
-                        ip_routes,
-                        dhcp_leases,
-                        firewall_rules,
-                        neighbors,
-                        logs,
-                    );
-                }
+                app::AppEvent::DataLoaded(data) => app.apply_loaded_data(*data),
                 app::AppEvent::PingFinished(result) => {
                     app.status_message = format!(
                         "✅ Ping completed for {}: {}% loss",

@@ -70,22 +70,28 @@ pub enum PingState {
     Completed { result: PingResult },
 }
 
+/// One refresh's worth of router state. `None` means that fetch failed; an empty `Vec`
+/// means the router genuinely has none of that resource.
+#[derive(Default)]
+pub struct LoadedData {
+    pub system: Option<SystemResource>,
+    pub interfaces: Option<Vec<Interface>>,
+    pub ip_addresses: Option<Vec<IpAddress>>,
+    pub ip_routes: Option<Vec<IpRoute>>,
+    pub dhcp_leases: Option<Vec<DhcpLease>>,
+    pub firewall_rules: Option<Vec<FirewallRule>>,
+    pub neighbors: Option<Vec<Neighbor>>,
+    pub logs: Option<Vec<LogEntry>>,
+}
+
 pub enum AppEvent {
     /// A refresh could not reach the router. Previously every failure was swallowed by
     /// `.ok()` and still reported as success, which would have hidden host key
     /// rejections entirely.
     LoadFailed(String),
     HostKeyVerified(bool),
-    DataLoaded {
-        system: Option<SystemResource>,
-        interfaces: Option<Vec<Interface>>,
-        ip_addresses: Option<Vec<IpAddress>>,
-        ip_routes: Option<Vec<IpRoute>>,
-        dhcp_leases: Option<Vec<DhcpLease>>,
-        firewall_rules: Option<Vec<FirewallRule>>,
-        neighbors: Option<Vec<Neighbor>>,
-        logs: Option<Vec<LogEntry>>,
-    },
+    /// Boxed: inline this payload is ~490 bytes and would set the size of every event.
+    DataLoaded(Box<LoadedData>),
     PingFinished(PingResult),
 }
 
@@ -294,41 +300,33 @@ impl App {
                 .send(AppEvent::HostKeyVerified(client.host_key_verified().await))
                 .await;
 
-            let system = client.fetch_system_resource().await.ok();
-            let interfaces = client.fetch_interfaces().await.ok();
-            let ip_addresses = client.fetch_ip_addresses().await.ok();
-            let ip_routes = client.fetch_ip_routes().await.ok();
-            let dhcp_leases = client.fetch_dhcp_leases().await.ok();
-            let firewall_rules = client.fetch_firewall_rules().await.ok();
-            let neighbors = client.fetch_neighbors().await.ok();
-            let logs = client.fetch_logs().await.ok();
+            let data = LoadedData {
+                system: client.fetch_system_resource().await.ok(),
+                interfaces: client.fetch_interfaces().await.ok(),
+                ip_addresses: client.fetch_ip_addresses().await.ok(),
+                ip_routes: client.fetch_ip_routes().await.ok(),
+                dhcp_leases: client.fetch_dhcp_leases().await.ok(),
+                firewall_rules: client.fetch_firewall_rules().await.ok(),
+                neighbors: client.fetch_neighbors().await.ok(),
+                logs: client.fetch_logs().await.ok(),
+            };
 
-            let _ = tx
-                .send(AppEvent::DataLoaded {
-                    system,
-                    interfaces,
-                    ip_addresses,
-                    ip_routes,
-                    dhcp_leases,
-                    firewall_rules,
-                    neighbors,
-                    logs,
-                })
-                .await;
+            let _ = tx.send(AppEvent::DataLoaded(Box::new(data))).await;
         });
     }
 
-    pub fn apply_loaded_data(
-        &mut self,
-        system: Option<SystemResource>,
-        interfaces: Option<Vec<Interface>>,
-        ip_addresses: Option<Vec<IpAddress>>,
-        ip_routes: Option<Vec<IpRoute>>,
-        dhcp_leases: Option<Vec<DhcpLease>>,
-        firewall_rules: Option<Vec<FirewallRule>>,
-        neighbors: Option<Vec<Neighbor>>,
-        logs: Option<Vec<LogEntry>>,
-    ) {
+    pub fn apply_loaded_data(&mut self, data: LoadedData) {
+        let LoadedData {
+            system,
+            interfaces,
+            ip_addresses,
+            ip_routes,
+            dhcp_leases,
+            firewall_rules,
+            neighbors,
+            logs,
+        } = data;
+
         if let Some(res) = system {
             if !res.board_name.is_empty() || !res.version.is_empty() {
                 self.system_resource = res;
