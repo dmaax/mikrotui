@@ -51,8 +51,8 @@ pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
             Cell::from(item.dst_address.as_str()),
             Cell::from(item.protocol.as_str()),
             Cell::from(item.dst_port.as_str()),
-            Cell::from(format!("{}", item.bytes)),
-            Cell::from(format!("{}", item.packets)),
+            Cell::from(crate::ui::format::bytes(item.bytes)),
+            Cell::from(crate::ui::format::count(item.packets)),
             Cell::from(item.comment.as_str()).style(t.muted_text),
         ])
         .style(row_style)
@@ -73,8 +73,8 @@ pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(16),
             Constraint::Length(8),
             Constraint::Length(14),
-            Constraint::Length(12),
-            Constraint::Length(10),
+            Constraint::Length(8),
+            Constraint::Length(8),
             Constraint::Min(15),
         ],
     );

@@ -1,3 +1,4 @@
+pub mod format;
 pub mod header;
 pub mod help_modal;
 pub mod host_switch_modal;
@@ -146,6 +147,71 @@ mod tests {
         assert!(
             screen(&app).contains("200 of 200"),
             "the range should follow the scroll position"
+        );
+    }
+
+    /// The status message is the only place errors surface. It used to be appended after
+    /// ten hotkeys that were already wider than an 80-column terminal, so it never
+    /// rendered at exactly the width where something had gone wrong.
+    #[test]
+    fn the_status_message_survives_a_narrow_terminal() {
+        let mut app = app_with_interfaces(3);
+        app.status_message = "refresh gave up after 60s".to_string();
+
+        for width in [80u16, 100, 120, 200] {
+            let backend = TestBackend::new(width, TERM_HEIGHT);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|f| render(f, &app)).unwrap();
+
+            let buffer = terminal.backend().buffer();
+            let screen: String = (0..TERM_HEIGHT)
+                .flat_map(|y| (0..width).map(move |x| (x, y)))
+                .map(|(x, y)| buffer[(x, y)].symbol())
+                .collect();
+
+            assert!(
+                screen.contains("refresh gave up"),
+                "the message vanished at {width} columns"
+            );
+        }
+    }
+
+    /// Counts are abbreviated rather than clipped: a byte total cut to its first three
+    /// digits reads as a real number, which is worse than showing fewer of them.
+    #[test]
+    fn large_counts_are_abbreviated_not_clipped() {
+        let mut app = App::with_client(RouterClient::new(SshConfig::default()), true);
+        app.active_tab = Tab::Firewall;
+        app.firewall_rules = vec![crate::models::FirewallRule {
+            id: "0".to_string(),
+            chain: "input".to_string(),
+            action: "accept".to_string(),
+            bytes: 194_810_240,
+            packets: 1_490_210,
+            ..Default::default()
+        }];
+
+        let backend = TestBackend::new(200, TERM_HEIGHT);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let screen: String = (0..TERM_HEIGHT)
+            .flat_map(|y| (0..200u16).map(move |x| (x, y)))
+            .map(|(x, y)| buffer[(x, y)].symbol())
+            .collect();
+
+        assert!(
+            screen.contains("186Mi"),
+            "expected an abbreviated byte count"
+        );
+        assert!(
+            screen.contains("1.49M"),
+            "expected an abbreviated packet count"
+        );
+        assert!(
+            !screen.contains("194810240"),
+            "the raw value should not be what the column tries to fit"
         );
     }
 

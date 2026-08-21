@@ -17,8 +17,8 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
         "Type",
         "MTU",
         "MAC Address",
-        "Rx Packets",
-        "Tx Packets",
+        "Rx Pkts",
+        "Tx Pkts",
         "Comment",
     ]
     .iter()
@@ -46,8 +46,8 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
             Cell::from(i.interface_type.as_str()),
             Cell::from(i.mtu.as_str()),
             Cell::from(i.mac_address.as_str()),
-            Cell::from(format!("{}", i.rx_packet)),
-            Cell::from(format!("{}", i.tx_packet)),
+            Cell::from(crate::ui::format::count(i.rx_packet)),
+            Cell::from(crate::ui::format::count(i.tx_packet)),
             Cell::from(i.comment.as_str()).style(t.muted_text),
         ])
         .style(row_style)
@@ -67,8 +67,8 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(12),
             Constraint::Length(8),
             Constraint::Length(20),
-            Constraint::Length(14),
-            Constraint::Length(14),
+            Constraint::Length(8),
+            Constraint::Length(8),
             Constraint::Min(15),
         ],
     );
