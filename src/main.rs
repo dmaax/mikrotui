@@ -54,6 +54,10 @@ struct CliArgs {
     #[arg(long, value_name = "PATH")]
     known_hosts: Option<PathBuf>,
 
+    /// Refresh the visible tab automatically every N seconds (omit to refresh only on 'r')
+    #[arg(long, value_name = "SECONDS")]
+    refresh: Option<u64>,
+
     /// Run in Demo Mode
     #[arg(short, long)]
     demo: bool,
@@ -159,7 +163,8 @@ async fn main() -> Result<()> {
 
     // App state
     let mut app = App::with_client(client, verified);
-    let _ = app.load_all_data().await;
+    app.refresh_interval = cli.refresh.filter(|s| *s > 0).map(Duration::from_secs);
+    let _ = app.load_initial_data().await;
 
     // Main event loop
     let res = run_app(&mut terminal, &mut app).await;
@@ -516,6 +521,12 @@ async fn run_app(
         // Process background events from Tokio channel
         while let Ok(event) = rx.try_recv() {
             app.handle_event(event);
+        }
+
+        // A tab the user has not opened yet holds nothing, since a refresh only fetches
+        // what is on screen.
+        if app.active_tab_needs_data() || app.auto_refresh_due() {
+            app.trigger_background_reload(tx.clone());
         }
 
         terminal.draw(|f| ui::render(f, app))?;

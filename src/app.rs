@@ -4,9 +4,11 @@ use crate::ssh::{RouterClient, SshConfig};
 use crate::ui::theme::Theme;
 use anyhow::Result;
 use std::cell::Cell;
+use std::collections::HashSet;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tab {
     System,
     Interfaces,
@@ -54,6 +56,27 @@ impl Tab {
             Tab::Neighbors => "📡 ",
             Tab::Logs => "📜",
         }
+    }
+}
+
+/// Fetch the one resource a tab displays.
+///
+/// A refresh used to pull all eight regardless of what was on screen: up to twenty-four
+/// SSH commands, in series, to update a single visible table. That cost is also why there
+/// was no auto-refresh — repeating it on a timer would have kept the router busy
+/// permanently.
+async fn fetch_for_tab(client: &RouterClient, tab: Tab, data: &mut LoadedData) {
+    match tab {
+        // The header reads board name and version from the system resource, so it is
+        // fetched on every refresh regardless and needs nothing more here.
+        Tab::System => {}
+        Tab::Interfaces => data.interfaces = client.fetch_interfaces().await.ok(),
+        Tab::IpAddresses => data.ip_addresses = client.fetch_ip_addresses().await.ok(),
+        Tab::IpRoutes => data.ip_routes = client.fetch_ip_routes().await.ok(),
+        Tab::DhcpLeases => data.dhcp_leases = client.fetch_dhcp_leases().await.ok(),
+        Tab::Firewall => data.firewall_rules = client.fetch_firewall_rules().await.ok(),
+        Tab::Neighbors => data.neighbors = client.fetch_neighbors().await.ok(),
+        Tab::Logs => data.logs = client.fetch_logs().await.ok(),
     }
 }
 
@@ -124,6 +147,13 @@ pub struct App {
     /// Incremented whenever the active router changes, so results from a refresh started
     /// against the previous host can be recognised and discarded.
     pub reload_generation: u64,
+    /// Tabs whose data has been fetched at least once from the current router. A tab the
+    /// user has not visited is never fetched, so switching to it has to trigger one.
+    loaded_tabs: HashSet<Tab>,
+    /// How often to refresh unattended, if the user asked for it.
+    pub refresh_interval: Option<Duration>,
+    /// When the last refresh was started, for the auto-refresh timer.
+    pub last_refresh: Instant,
     pub input_mode: InputMode,
     pub filter_query: String,
     pub client: RouterClient,
@@ -161,6 +191,9 @@ impl App {
             viewport_rows: Cell::new(1),
             host_key_verified,
             reload_generation: 0,
+            loaded_tabs: HashSet::new(),
+            refresh_interval: None,
+            last_refresh: Instant::now(),
             input_mode: InputMode::Normal,
             filter_query: String::new(),
             client,
@@ -224,6 +257,7 @@ impl App {
             // header naming the new host and a badge reporting the old host's key.
             self.reload_generation = self.reload_generation.wrapping_add(1);
             self.is_loading = false;
+            self.loaded_tabs.clear();
             self.show_host_switch_modal = false;
             self.status_message = if from_file {
                 format!(
@@ -407,6 +441,9 @@ impl App {
 
         let client = self.client.clone();
         let generation = self.reload_generation;
+        let tab = self.active_tab;
+        self.last_refresh = Instant::now();
+        self.loaded_tabs.insert(tab);
 
         tokio::spawn(async move {
             // Bound the whole cycle. Every path out of this task has to emit an event:
@@ -419,16 +456,14 @@ impl App {
                 client.connect().await?;
 
                 let verified = client.host_key_verified().await;
-                let data = LoadedData {
+
+                // The header always shows board name and version.
+                let mut data = LoadedData {
                     system: client.fetch_system_resource().await.ok(),
-                    interfaces: client.fetch_interfaces().await.ok(),
-                    ip_addresses: client.fetch_ip_addresses().await.ok(),
-                    ip_routes: client.fetch_ip_routes().await.ok(),
-                    dhcp_leases: client.fetch_dhcp_leases().await.ok(),
-                    firewall_rules: client.fetch_firewall_rules().await.ok(),
-                    neighbors: client.fetch_neighbors().await.ok(),
-                    logs: client.fetch_logs().await.ok(),
+                    ..Default::default()
                 };
+                fetch_for_tab(&client, tab, &mut data).await;
+
                 Ok::<_, anyhow::Error>((verified, data))
             })
             .await;
@@ -523,7 +558,13 @@ impl App {
         self.status_message = format!("Theme changed to: {}", next_kind.name());
     }
 
-    pub async fn load_all_data(&mut self) -> Result<()> {
+    /// Fetch what the first frame needs, and nothing else.
+    ///
+    /// This runs after raw mode is entered and before the first draw, so every command it
+    /// issues is time the user spends looking at a blank alternate screen. It used to
+    /// fetch all eight resources — with per-command timeouts and retries, minutes in the
+    /// worst case, with no event loop yet running to accept Ctrl+C.
+    pub async fn load_initial_data(&mut self) -> Result<()> {
         self.is_loading = true;
 
         if let Ok(res) = self.client.fetch_system_resource().await {
@@ -532,51 +573,30 @@ impl App {
             }
         }
 
-        if let Ok(ifaces) = self.client.fetch_interfaces().await {
-            if !ifaces.is_empty() {
-                self.interfaces = ifaces;
-            }
-        }
+        let mut data = LoadedData::default();
+        fetch_for_tab(&self.client, self.active_tab, &mut data).await;
+        self.apply_loaded_data(data);
+        self.loaded_tabs.insert(self.active_tab);
 
-        if let Ok(addrs) = self.client.fetch_ip_addresses().await {
-            if !addrs.is_empty() {
-                self.ip_addresses = addrs;
-            }
-        }
-
-        if let Ok(routes) = self.client.fetch_ip_routes().await {
-            if !routes.is_empty() {
-                self.ip_routes = routes;
-            }
-        }
-
-        if let Ok(dhcp) = self.client.fetch_dhcp_leases().await {
-            if !dhcp.is_empty() {
-                self.dhcp_leases = dhcp;
-            }
-        }
-
-        if let Ok(fw) = self.client.fetch_firewall_rules().await {
-            if !fw.is_empty() {
-                self.firewall_rules = fw;
-            }
-        }
-
-        if let Ok(neigh) = self.client.fetch_neighbors().await {
-            if !neigh.is_empty() {
-                self.neighbors = neigh;
-            }
-        }
-
-        if let Ok(logs) = self.client.fetch_logs().await {
-            if !logs.is_empty() {
-                self.logs = logs;
-            }
-        }
-
-        self.clamp_selection();
         self.is_loading = false;
         Ok(())
+    }
+
+    /// Whether the active tab has never been fetched from this router.
+    ///
+    /// False while a refresh is running: `trigger_background_reload` refuses overlapping
+    /// runs without marking the tab, so asking again every frame would only repeat the
+    /// "already in progress" message until that refresh finished.
+    pub fn active_tab_needs_data(&self) -> bool {
+        !self.is_loading && !self.loaded_tabs.contains(&self.active_tab)
+    }
+
+    /// Whether the auto-refresh interval has elapsed.
+    pub fn auto_refresh_due(&self) -> bool {
+        match self.refresh_interval {
+            Some(interval) => !self.is_loading && self.last_refresh.elapsed() >= interval,
+            None => false,
+        }
     }
 
     pub fn next_tab(&mut self) {
@@ -1048,6 +1068,117 @@ mod tests {
 
         app.dhcp_leases.clear();
         assert_eq!(app.get_selected_ip_or_default(), "8.8.8.8");
+    }
+
+    /// A refresh fetches only what is on screen. Fetching all eight resources to update
+    /// one visible table cost up to twenty-four SSH commands in series, which is also why
+    /// there was no auto-refresh.
+    #[tokio::test]
+    async fn a_refresh_fetches_only_the_visible_tab() {
+        let client = RouterClient::new(SshConfig::default());
+
+        for (tab, present, absent) in [
+            (Tab::Interfaces, "interfaces", "firewall_rules"),
+            (Tab::Firewall, "firewall_rules", "interfaces"),
+            (Tab::Logs, "logs", "dhcp_leases"),
+        ] {
+            let mut data = LoadedData::default();
+            fetch_for_tab(&client, tab, &mut data).await;
+
+            let filled: Vec<&str> = [
+                ("interfaces", data.interfaces.is_some()),
+                ("ip_addresses", data.ip_addresses.is_some()),
+                ("ip_routes", data.ip_routes.is_some()),
+                ("dhcp_leases", data.dhcp_leases.is_some()),
+                ("firewall_rules", data.firewall_rules.is_some()),
+                ("neighbors", data.neighbors.is_some()),
+                ("logs", data.logs.is_some()),
+            ]
+            .iter()
+            .filter(|(_, some)| *some)
+            .map(|(name, _)| *name)
+            .collect();
+
+            assert_eq!(filled, vec![present], "{tab:?} should fetch only {present}");
+            assert!(!filled.contains(&absent));
+        }
+    }
+
+    /// Switching to a tab that was never fetched has to trigger one, since a refresh no
+    /// longer pulls everything.
+    #[test]
+    fn an_unvisited_tab_asks_for_its_data() {
+        let mut app = app();
+        app.active_tab = Tab::System;
+        app.loaded_tabs.insert(Tab::System);
+        assert!(!app.active_tab_needs_data());
+
+        app.next_tab();
+        assert!(
+            app.active_tab_needs_data(),
+            "a tab with no data must ask for it"
+        );
+
+        // But not while a refresh is already running: trigger_background_reload refuses
+        // overlapping runs without marking the tab, so this would repeat every frame.
+        app.is_loading = true;
+        assert!(!app.active_tab_needs_data());
+    }
+
+    #[test]
+    fn auto_refresh_is_off_unless_asked_for() {
+        let mut app = app();
+        assert!(app.refresh_interval.is_none());
+        assert!(!app.auto_refresh_due(), "off by default");
+
+        app.refresh_interval = Some(Duration::from_millis(0));
+        assert!(app.auto_refresh_due(), "a zero interval is always due");
+
+        app.refresh_interval = Some(Duration::from_secs(3600));
+        assert!(!app.auto_refresh_due(), "not due yet");
+
+        // And never on top of a running refresh.
+        app.refresh_interval = Some(Duration::from_millis(0));
+        app.is_loading = true;
+        assert!(!app.auto_refresh_due());
+    }
+
+    /// The timer the event loop consults each frame. Starting a refresh has to reset it,
+    /// or `auto_refresh_due` would stay true and queue a refresh on every frame.
+    #[tokio::test]
+    async fn starting_a_refresh_resets_the_auto_refresh_timer() {
+        let (tx, _rx) = mpsc::channel(8);
+        let mut app = app();
+        app.refresh_interval = Some(Duration::from_secs(60));
+
+        // Pretend the interval has elapsed.
+        app.last_refresh = Instant::now() - Duration::from_secs(120);
+        assert!(app.auto_refresh_due(), "overdue refresh should be due");
+
+        app.trigger_background_reload(tx);
+        assert!(app.is_loading);
+
+        // Clear the in-flight flag, which masks the timer on its own, so this asserts on
+        // the timer and nothing else.
+        app.is_loading = false;
+        assert!(
+            !app.auto_refresh_due(),
+            "the timer must restart, or every frame would queue another refresh"
+        );
+    }
+
+    /// A refresh marks its tab as loaded, so the loop stops asking for it.
+    #[tokio::test]
+    async fn a_refresh_marks_the_tab_it_fetched() {
+        let (tx, _rx) = mpsc::channel(8);
+        let mut app = app();
+        app.active_tab = Tab::Firewall;
+        assert!(app.active_tab_needs_data());
+
+        app.trigger_background_reload(tx);
+        app.is_loading = false; // as the completing event would
+
+        assert!(!app.active_tab_needs_data());
     }
 
     /// `is_loading` gates every refresh, so a failure has to clear it or reloading is

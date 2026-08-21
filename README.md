@@ -10,7 +10,7 @@
 
 ## ✨ Features
 
-- ⚙ **System Resources Monitor**: Real-time CPU Gauge, RAM, HDD storage, Architecture, Board model, Uptime, and RouterOS version (fully compatible with ROS v6 and ROS v7).
+- ⚙ **System Resources Monitor**: CPU gauge, RAM, HDD storage, architecture, board model, uptime and RouterOS version (compatible with ROS v6 and v7). Refreshes on `r`, or on a timer with `--refresh`.
 - 🔌 **Network Interfaces**: Full list of interfaces (Ethernet, VLAN, WireGuard, Bridges) with MTU, MAC, Link status (`Running`/`Down`), Rx/Tx packet counters, and comments.
 - 🌐 **IP Addresses & Routing**: `/ip address` and `/ip route` tables with CIDR notation, network subnets, gateways, administrative distance, and flags (`Active`, `Dynamic`, `Static`, `Disabled`).
 - 💻 **DHCP Server Leases**: Bound leases list displaying IP address, MAC address, device hostname, server name, status, and expiration timer.
@@ -61,7 +61,15 @@ pass show mikrotik | mikrotui --host 192.168.88.1 --user admin --password-stdin
 
 # Or run in Demo Mode (no router required):
 mikrotui --demo
+
+# Refresh the visible tab every 5 seconds instead of only on 'r':
+mikrotui --refresh 5
 ```
+
+> MikroTUI fetches only the tab you are looking at, plus the system resource the header
+> shows. Switching to a tab for the first time fetches it then. That keeps a refresh to a
+> couple of SSH commands rather than the two dozen it would take to update all eight
+> tables, which is what makes `--refresh` reasonable to leave on.
 
 ### 2. Manage Router Hosts
 
