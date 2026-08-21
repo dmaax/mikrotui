@@ -89,11 +89,24 @@ pub enum AppEvent {
     /// A refresh could not reach the router. Previously every failure was swallowed by
     /// `.ok()` and still reported as success, which would have hidden host key
     /// rejections entirely.
-    LoadFailed(String),
-    HostKeyVerified(bool),
+    LoadFailed {
+        generation: u64,
+        error: String,
+    },
+    HostKeyVerified {
+        generation: u64,
+        verified: bool,
+    },
     /// Boxed: inline this payload is ~490 bytes and would set the size of every event.
-    DataLoaded(Box<LoadedData>),
+    DataLoaded {
+        generation: u64,
+        data: Box<LoadedData>,
+    },
     PingFinished(PingResult),
+    PingFailed {
+        target: String,
+        error: String,
+    },
 }
 
 pub struct App {
@@ -108,6 +121,9 @@ pub struct App {
     pub viewport_rows: Cell<usize>,
     /// Whether the current session's host key matched `known_hosts`.
     pub host_key_verified: bool,
+    /// Incremented whenever the active router changes, so results from a refresh started
+    /// against the previous host can be recognised and discarded.
+    pub reload_generation: u64,
     pub input_mode: InputMode,
     pub filter_query: String,
     pub client: RouterClient,
@@ -144,6 +160,7 @@ impl App {
             table_offset: Cell::new(0),
             viewport_rows: Cell::new(1),
             host_key_verified,
+            reload_generation: 0,
             input_mode: InputMode::Normal,
             filter_query: String::new(),
             client,
@@ -165,7 +182,7 @@ impl App {
             status_message: if demo {
                 "Demo mode — showing sample data, no router is connected.".to_string()
             } else {
-                "Connected. Read-only: MikroTUI refuses any command that writes.".to_string()
+                "Connected. Read-only guard active — use a RouterOS `read` account for a real guarantee.".to_string()
             },
             is_loading: false,
         }
@@ -184,12 +201,14 @@ impl App {
             // Inside the TUI there is no way to prompt for a host key decision, so an
             // unknown host is refused rather than trusted; the error explains how to
             // accept it from the command line.
+            let from_keyring = crate::secrets::keyring_get(&host_cfg.account_id());
+            let from_file = from_keyring.is_none() && host_cfg.file_password().is_some();
+
             let new_ssh_config = SshConfig {
                 host: host_cfg.host.clone(),
                 port: host_cfg.port,
                 user: host_cfg.user.clone(),
-                pass: crate::secrets::keyring_get(&host_cfg.account_id())
-                    .or_else(|| host_cfg.file_password()),
+                pass: from_keyring.or_else(|| host_cfg.file_password()),
                 key_path: None,
                 demo_mode: false,
                 host_key_policy: crate::ssh::HostKeyPolicy::Strict,
@@ -198,11 +217,26 @@ impl App {
 
             self.client = RouterClient::new(new_ssh_config);
             self.host_key_verified = false;
+
+            // Abandon whatever the previous router's refresh was doing. Its task is still
+            // running and will still send its results; without a new generation number
+            // those rows would land here and be shown as the new host's data, under a
+            // header naming the new host and a badge reporting the old host's key.
+            self.reload_generation = self.reload_generation.wrapping_add(1);
+            self.is_loading = false;
             self.show_host_switch_modal = false;
-            self.status_message = format!(
-                "Connecting to router [{}] ({})...",
-                host_cfg.name, host_cfg.host
-            );
+            self.status_message = if from_file {
+                format!(
+                    "Connecting to [{}] ({})... ⚠️ password read from config.json, which is \
+                     only obfuscated — run 'mikrotui host migrate'",
+                    host_cfg.name, host_cfg.host
+                )
+            } else {
+                format!(
+                    "Connecting to router [{}] ({})...",
+                    host_cfg.name, host_cfg.host
+                )
+            };
 
             // Reset current view models
             self.system_resource = SystemResource::default();
@@ -228,8 +262,20 @@ impl App {
     }
 
     pub fn trigger_ping(&mut self, target: String, tx: mpsc::Sender<AppEvent>) {
-        if target.trim().is_empty() {
+        let target = target.trim().to_string();
+        if target.is_empty() {
             self.ping_state = PingState::Inactive;
+            return;
+        }
+
+        // The target is interpolated straight into a RouterOS command line, so anything
+        // the CLI treats as punctuation would let the ping box reach commands the read-only
+        // guard is meant to stand in front of. A host or address has none of it.
+        if !is_pingable_target(&target) {
+            self.ping_state = PingState::Inactive;
+            self.status_message = format!(
+                "❌ '{target}' is not a valid host or address (letters, digits, '.', ':', '-' and '_' only)"
+            );
             return;
         }
         self.ping_state = PingState::Running {
@@ -238,9 +284,16 @@ impl App {
         let client = self.client.clone();
 
         tokio::spawn(async move {
-            if let Ok(res) = client.run_ping(&target, 5).await {
-                let _ = tx.send(AppEvent::PingFinished(res)).await;
-            }
+            // Dropping the error here left PingState::Running in place with no way out but
+            // Esc, and no indication of what went wrong.
+            let event = match client.run_ping(&target, 5).await {
+                Ok(res) => AppEvent::PingFinished(res),
+                Err(err) => AppEvent::PingFailed {
+                    target,
+                    error: err.to_string(),
+                },
+            };
+            let _ = tx.send(event).await;
         });
     }
 
@@ -264,6 +317,19 @@ impl App {
             result.target, result.packet_loss_pct
         );
         self.ping_state = PingState::Completed { result };
+    }
+
+    /// Close a ping that could not run, unless the user already dismissed it.
+    pub fn fail_ping(&mut self, target: &str, error: String) {
+        let awaited = match &self.ping_state {
+            PingState::Running { target: t } => t == target,
+            _ => false,
+        };
+        if !awaited {
+            return;
+        }
+        self.ping_state = PingState::Inactive;
+        self.status_message = format!("❌ Ping to {target} failed: {error}");
     }
 
     pub fn get_selected_ip_or_default(&self) -> String {
@@ -320,6 +386,7 @@ impl App {
         self.status_message = "⏳ Refreshing data via SSH in background...".to_string();
 
         let client = self.client.clone();
+        let generation = self.reload_generation;
 
         tokio::spawn(async move {
             // Bound the whole cycle. Every path out of this task has to emit an event:
@@ -348,14 +415,28 @@ impl App {
 
             let event = match outcome {
                 Ok(Ok((verified, data))) => {
-                    let _ = tx.send(AppEvent::HostKeyVerified(verified)).await;
-                    AppEvent::DataLoaded(Box::new(data))
+                    let _ = tx
+                        .send(AppEvent::HostKeyVerified {
+                            generation,
+                            verified,
+                        })
+                        .await;
+                    AppEvent::DataLoaded {
+                        generation,
+                        data: Box::new(data),
+                    }
                 }
-                Ok(Err(err)) => AppEvent::LoadFailed(err.to_string()),
-                Err(_) => AppEvent::LoadFailed(format!(
-                    "refresh gave up after {}s without a reply from the router",
-                    crate::ssh::REFRESH_TIMEOUT.as_secs()
-                )),
+                Ok(Err(err)) => AppEvent::LoadFailed {
+                    generation,
+                    error: err.to_string(),
+                },
+                Err(_) => AppEvent::LoadFailed {
+                    generation,
+                    error: format!(
+                        "refresh gave up after {}s without a reply from the router",
+                        crate::ssh::REFRESH_TIMEOUT.as_secs()
+                    ),
+                },
             };
 
             let _ = tx.send(event).await;
@@ -593,6 +674,33 @@ impl App {
         }
     }
 
+    /// Route a background event, ignoring anything from a superseded refresh.
+    ///
+    /// `Ctrl+O` can change router while a refresh is in flight; that task keeps running
+    /// and still reports. Without this check its rows were applied to the new host and
+    /// announced as success, and its host key verdict lit the badge for a router that was
+    /// never contacted.
+    pub fn handle_event(&mut self, event: AppEvent) {
+        let generation = match &event {
+            AppEvent::LoadFailed { generation, .. }
+            | AppEvent::HostKeyVerified { generation, .. }
+            | AppEvent::DataLoaded { generation, .. } => *generation,
+            // Ping results carry their own target check.
+            AppEvent::PingFinished(_) | AppEvent::PingFailed { .. } => self.reload_generation,
+        };
+        if generation != self.reload_generation {
+            return;
+        }
+
+        match event {
+            AppEvent::LoadFailed { error, .. } => self.report_load_failure(error),
+            AppEvent::HostKeyVerified { verified, .. } => self.host_key_verified = verified,
+            AppEvent::DataLoaded { data, .. } => self.apply_loaded_data(*data),
+            AppEvent::PingFinished(result) => self.finish_ping(result),
+            AppEvent::PingFailed { target, error } => self.fail_ping(&target, error),
+        }
+    }
+
     pub fn report_load_failure(&mut self, err: String) {
         self.is_loading = false;
         self.status_message = format!("❌ {err}");
@@ -711,9 +819,23 @@ impl App {
     }
 }
 
+/// Whether `target` is something that can only be a host name or IP address.
+///
+/// Deliberately a character allowlist rather than an attempt to parse: the value is
+/// interpolated into a RouterOS command line, and RouterOS treats ';', '[' and whitespace
+/// as syntax.
+fn is_pingable_target(target: &str) -> bool {
+    !target.is_empty()
+        && target.len() <= 253
+        && target
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '-' | '_' | '%'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Interface;
     use crate::ssh::{RouterClient, SshConfig};
 
     fn app() -> App {
@@ -772,6 +894,83 @@ mod tests {
             matches!(&app.ping_state, PingState::Running { target } if target == "1.1.1.1"),
             "the in-flight ping should still be pending"
         );
+    }
+
+    /// Switching router while a refresh is in flight used to apply the previous
+    /// router's rows to the new host, announce them as success, and light the host key
+    /// badge for a router that was never contacted.
+    #[test]
+    fn results_from_a_superseded_refresh_are_discarded() {
+        let mut app = app();
+        let generation = app.reload_generation;
+        app.is_loading = true;
+
+        // Ctrl+O: the active router changes.
+        app.reload_generation = app.reload_generation.wrapping_add(1);
+
+        let data = LoadedData {
+            interfaces: Some(vec![Interface {
+                name: "PREVIOUS-ROUTER-ether1".to_string(),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        app.handle_event(AppEvent::DataLoaded {
+            generation,
+            data: Box::new(data),
+        });
+        app.handle_event(AppEvent::HostKeyVerified {
+            generation,
+            verified: true,
+        });
+
+        assert!(
+            app.interfaces.is_empty(),
+            "the old router's rows must not appear under the new host"
+        );
+        assert!(
+            !app.host_key_verified,
+            "the old router's key verdict must not light the badge"
+        );
+
+        // The current generation still applies.
+        app.handle_event(AppEvent::HostKeyVerified {
+            generation: app.reload_generation,
+            verified: true,
+        });
+        assert!(app.host_key_verified);
+    }
+
+    /// The ping target is interpolated into a command line.
+    #[test]
+    fn ping_targets_that_are_not_hosts_are_refused() {
+        for good in ["8.8.8.8", "router.example.com", "fe80::1", "my-host_1"] {
+            assert!(is_pingable_target(good), "{good} should be accepted");
+        }
+        for bad in [
+            "8.8.8.8; /ip dhcp-server lease make-static [find]",
+            "8.8.8.8 count=1",
+            "[/system reboot]",
+            "",
+        ] {
+            assert!(!is_pingable_target(bad), "{bad:?} should be refused");
+        }
+    }
+
+    #[test]
+    fn a_ping_that_cannot_run_closes_the_modal() {
+        let mut app = app();
+        app.ping_state = PingState::Running {
+            target: "1.1.1.1".to_string(),
+        };
+
+        app.fail_ping("1.1.1.1", "connection refused".to_string());
+
+        assert!(
+            matches!(app.ping_state, PingState::Inactive),
+            "a failed ping must not leave the modal spinning"
+        );
+        assert!(app.status_message.contains("connection refused"));
     }
 
     /// `is_loading` gates every refresh, so a failure has to clear it or reloading is
