@@ -244,6 +244,28 @@ impl App {
         });
     }
 
+    /// Accept a ping result, unless the user already dismissed the modal.
+    ///
+    /// `Esc` during a ping sets the state back to `Inactive`, but the request is still in
+    /// flight; storing its result unconditionally reopened the modal the user had just
+    /// closed. A result whose target no longer matches belongs to a superseded ping and is
+    /// dropped for the same reason.
+    pub fn finish_ping(&mut self, result: PingResult) {
+        let awaited = match &self.ping_state {
+            PingState::Running { target } => target == &result.target,
+            _ => false,
+        };
+        if !awaited {
+            return;
+        }
+
+        self.status_message = format!(
+            "✅ Ping completed for {}: {}% loss",
+            result.target, result.packet_loss_pct
+        );
+        self.ping_state = PingState::Completed { result };
+    }
+
     pub fn get_selected_ip_or_default(&self) -> String {
         match self.active_tab {
             Tab::IpAddresses => {
@@ -300,28 +322,43 @@ impl App {
         let client = self.client.clone();
 
         tokio::spawn(async move {
-            // Connect explicitly so a rejected host key is reported instead of showing
-            // up as eight silently empty result sets.
-            if let Err(err) = client.connect().await {
-                let _ = tx.send(AppEvent::LoadFailed(err.to_string())).await;
-                return;
-            }
-            let _ = tx
-                .send(AppEvent::HostKeyVerified(client.host_key_verified().await))
-                .await;
+            // Bound the whole cycle. Every path out of this task has to emit an event:
+            // `is_loading` stays set until one arrives, and while it is set every later
+            // refresh is refused, so a task that never finishes disables reloading for
+            // the rest of the session.
+            let outcome = tokio::time::timeout(crate::ssh::REFRESH_TIMEOUT, async {
+                // Connect explicitly so a rejected host key is reported instead of
+                // showing up as eight silently empty result sets.
+                client.connect().await?;
 
-            let data = LoadedData {
-                system: client.fetch_system_resource().await.ok(),
-                interfaces: client.fetch_interfaces().await.ok(),
-                ip_addresses: client.fetch_ip_addresses().await.ok(),
-                ip_routes: client.fetch_ip_routes().await.ok(),
-                dhcp_leases: client.fetch_dhcp_leases().await.ok(),
-                firewall_rules: client.fetch_firewall_rules().await.ok(),
-                neighbors: client.fetch_neighbors().await.ok(),
-                logs: client.fetch_logs().await.ok(),
+                let verified = client.host_key_verified().await;
+                let data = LoadedData {
+                    system: client.fetch_system_resource().await.ok(),
+                    interfaces: client.fetch_interfaces().await.ok(),
+                    ip_addresses: client.fetch_ip_addresses().await.ok(),
+                    ip_routes: client.fetch_ip_routes().await.ok(),
+                    dhcp_leases: client.fetch_dhcp_leases().await.ok(),
+                    firewall_rules: client.fetch_firewall_rules().await.ok(),
+                    neighbors: client.fetch_neighbors().await.ok(),
+                    logs: client.fetch_logs().await.ok(),
+                };
+                Ok::<_, anyhow::Error>((verified, data))
+            })
+            .await;
+
+            let event = match outcome {
+                Ok(Ok((verified, data))) => {
+                    let _ = tx.send(AppEvent::HostKeyVerified(verified)).await;
+                    AppEvent::DataLoaded(Box::new(data))
+                }
+                Ok(Err(err)) => AppEvent::LoadFailed(err.to_string()),
+                Err(_) => AppEvent::LoadFailed(format!(
+                    "refresh gave up after {}s without a reply from the router",
+                    crate::ssh::REFRESH_TIMEOUT.as_secs()
+                )),
             };
 
-            let _ = tx.send(AppEvent::DataLoaded(Box::new(data))).await;
+            let _ = tx.send(event).await;
         });
     }
 
@@ -671,5 +708,92 @@ impl App {
                 })
                 .collect()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ssh::{RouterClient, SshConfig};
+
+    fn app() -> App {
+        App::with_client(RouterClient::new(SshConfig::default()), false)
+    }
+
+    fn ping_result(target: &str) -> PingResult {
+        PingResult {
+            target: target.to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// Esc during a ping used to be undone by the result arriving afterwards.
+    #[test]
+    fn a_dismissed_ping_does_not_reopen_when_its_result_arrives() {
+        let mut app = app();
+        app.ping_state = PingState::Running {
+            target: "8.8.8.8".to_string(),
+        };
+
+        // Esc.
+        app.ping_state = PingState::Inactive;
+
+        app.finish_ping(ping_result("8.8.8.8"));
+        assert!(
+            matches!(app.ping_state, PingState::Inactive),
+            "a dismissed ping must stay dismissed"
+        );
+    }
+
+    #[test]
+    fn a_ping_the_user_is_waiting_for_still_shows_its_result() {
+        let mut app = app();
+        app.ping_state = PingState::Running {
+            target: "1.1.1.1".to_string(),
+        };
+
+        app.finish_ping(ping_result("1.1.1.1"));
+        match &app.ping_state {
+            PingState::Completed { result } => assert_eq!(result.target, "1.1.1.1"),
+            other => panic!("expected a completed ping, got {other:?}"),
+        }
+    }
+
+    /// Cancelling one ping and starting another must not show the stale result.
+    #[test]
+    fn a_superseded_ping_result_is_dropped() {
+        let mut app = app();
+        app.ping_state = PingState::Running {
+            target: "1.1.1.1".to_string(),
+        };
+
+        app.finish_ping(ping_result("8.8.8.8"));
+        assert!(
+            matches!(&app.ping_state, PingState::Running { target } if target == "1.1.1.1"),
+            "the in-flight ping should still be pending"
+        );
+    }
+
+    /// `is_loading` gates every refresh, so a failure has to clear it or reloading is
+    /// disabled for the rest of the session.
+    #[test]
+    fn a_failed_refresh_re_enables_reloading() {
+        let mut app = app();
+        app.is_loading = true;
+
+        app.report_load_failure("router stopped replying".to_string());
+
+        assert!(!app.is_loading, "a failure must release the reload gate");
+        assert!(app.status_message.contains("router stopped replying"));
+    }
+
+    #[test]
+    fn applying_data_re_enables_reloading() {
+        let mut app = app();
+        app.is_loading = true;
+
+        app.apply_loaded_data(LoadedData::default());
+
+        assert!(!app.is_loading);
     }
 }

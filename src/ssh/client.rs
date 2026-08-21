@@ -40,6 +40,19 @@ impl Default for SshConfig {
     }
 }
 
+/// Cap on a single RouterOS command.
+///
+/// Only `connect` was bounded before. A router that accepted the connection and then
+/// stopped answering left `channel.wait()` blocked forever, which stranded the refresh
+/// task and, with it, the `is_loading` flag that gates every later refresh.
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Cap on a whole refresh cycle.
+///
+/// A refresh issues up to eight resources' worth of commands, each with its own retry and
+/// fallback chain, so per-command timeouts alone still add up to minutes of apparent hang.
+pub const REFRESH_TIMEOUT: Duration = Duration::from_secs(60);
+
 impl SshConfig {
     pub fn known_hosts_path(&self) -> Result<PathBuf> {
         self.known_hosts
@@ -702,6 +715,10 @@ impl RouterClient {
     }
 
     async fn try_exec_command(&self, cmd: &str) -> Result<String> {
+        bounded(cmd, COMMAND_TIMEOUT, self.exec_once(cmd)).await
+    }
+
+    async fn exec_once(&self, cmd: &str) -> Result<String> {
         let is_conn = *self.is_connected.lock().await;
         if !is_conn {
             self.connect().await?;
@@ -730,5 +747,56 @@ impl RouterClient {
         }
 
         Ok(String::from_utf8_lossy(&output).to_string())
+    }
+}
+
+/// Fail a command that outlives `limit` rather than waiting on it forever.
+async fn bounded<T>(
+    cmd: &str,
+    limit: Duration,
+    fut: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    tokio::time::timeout(limit, fut)
+        .await
+        .map_err(|_| anyhow!("'{cmd}' did not complete within {}s", limit.as_secs()))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The failure mode this guards against: `channel.wait()` never returning, which
+    /// stranded the refresh task and left `is_loading` set for the rest of the session.
+    #[tokio::test]
+    async fn a_command_that_never_replies_fails_instead_of_hanging() {
+        let outcome = bounded::<String>(
+            "/system resource print",
+            Duration::from_millis(10),
+            std::future::pending(),
+        )
+        .await;
+
+        let err = outcome
+            .expect_err("a stalled command must not succeed")
+            .to_string();
+        assert!(err.contains("did not complete"), "got: {err}");
+        assert!(err.contains("/system resource print"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn a_command_that_replies_in_time_is_untouched() {
+        let outcome = bounded("/system resource print", Duration::from_secs(5), async {
+            Ok("uptime: 1d".to_string())
+        })
+        .await;
+
+        assert_eq!(outcome.unwrap(), "uptime: 1d");
+    }
+
+    /// A refresh issues many commands; the cycle cap has to exceed a single one or the
+    /// per-command timeout could never fire.
+    #[test]
+    fn the_refresh_budget_exceeds_a_single_command() {
+        assert!(REFRESH_TIMEOUT > COMMAND_TIMEOUT);
     }
 }
