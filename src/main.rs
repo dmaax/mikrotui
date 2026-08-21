@@ -9,7 +9,7 @@ mod wizard;
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -150,6 +150,7 @@ async fn main() -> Result<()> {
     let verified = client.host_key_verified().await;
 
     // Terminal initialization
+    install_panic_hook();
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -173,6 +174,21 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Restore the terminal before a panic prints.
+///
+/// A panic inside the draw loop unwinds past the cleanup at the end of `main`, leaving the
+/// terminal in raw mode on the alternate screen: no echo, no working newline, and the
+/// panic message itself invisible. The hook puts the terminal back first, then defers to
+/// the default handler so the message and backtrace still appear.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        default_hook(info);
+    }));
 }
 
 /// Connect, resolving host key and password questions interactively.
@@ -503,13 +519,7 @@ async fn run_app(
                 app::AppEvent::LoadFailed(err) => app.report_load_failure(err),
                 app::AppEvent::HostKeyVerified(v) => app.host_key_verified = v,
                 app::AppEvent::DataLoaded(data) => app.apply_loaded_data(*data),
-                app::AppEvent::PingFinished(result) => {
-                    app.status_message = format!(
-                        "✅ Ping completed for {}: {}% loss",
-                        result.target, result.packet_loss_pct
-                    );
-                    app.ping_state = PingState::Completed { result };
-                }
+                app::AppEvent::PingFinished(result) => app.finish_ping(result),
             }
         }
 
@@ -517,6 +527,12 @@ async fn run_app(
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
+                // Windows reports both press and release for every keystroke; without
+                // this each key would act twice.
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+
                 // 1. Quick Host Switcher Modal Handler (Ctrl+O)
                 if app.show_host_switch_modal {
                     match key.code {
