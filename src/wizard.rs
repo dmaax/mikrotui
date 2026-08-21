@@ -1,6 +1,18 @@
 use crate::config::{AppConfig, HostConfig};
 use crate::secrets;
 use crate::ssh::SshConfig;
+use std::path::PathBuf;
+
+/// Expand a leading `~/`, which users type and `PathBuf` does not understand.
+fn shellexpand_home(input: &str) -> String {
+    match input.strip_prefix("~/") {
+        Some(rest) => match dirs::home_dir() {
+            Some(home) => home.join(rest).to_string_lossy().into_owned(),
+            None => input.to_string(),
+        },
+        None => input.to_string(),
+    }
+}
 use anyhow::Result;
 use inquire::{Confirm, CustomType, Password, Select, Text};
 
@@ -67,6 +79,54 @@ pub fn run_add_host_wizard() -> Result<()> {
         "\n💡 MikroTUI only ever issues read commands. Giving it a RouterOS account in the \
          `read` group, rather than a full admin, is what actually guarantees that."
     );
+
+    let use_key = Confirm::new("Authenticate with an SSH private key instead of a password?")
+        .with_default(false)
+        .prompt()?;
+
+    if use_key {
+        let path = Text::new("Path to the private key (Ed25519 or ECDSA):")
+            .with_help_message("RSA is not accepted; see the Security section of the README")
+            .prompt()?;
+        let path = PathBuf::from(shellexpand_home(&path));
+
+        // Fail here rather than at the first connection: a missing, encrypted-and-
+        // unopenable, or RSA key is far easier to fix while still in the wizard.
+        let ask = |label: &str| -> Result<String> {
+            Ok(Password::new(label)
+                .with_display_mode(inquire::PasswordDisplayMode::Masked)
+                .without_confirmation()
+                .prompt()?)
+        };
+        crate::ssh::identity::prepare(&path, Some(&ask))?;
+
+        let mut app_config = AppConfig::load().unwrap_or_default();
+        let mut host_cfg = HostConfig::new(name.clone(), host, port, user);
+        host_cfg.identity_file = Some(path.clone());
+
+        println!("\n📋 === Configuration Summary ===");
+        println!(" • Alias:      {}", name);
+        println!(" • Host / IP:  {}:{}", host_cfg.host, host_cfg.port);
+        println!(" • User:       {}", host_cfg.user);
+        println!(" • Auth:       key {}", path.display());
+        println!("=================================\n");
+
+        if !Confirm::new("Do you want to save this configuration permanently?")
+            .with_default(true)
+            .prompt()?
+        {
+            println!("❌ Operation canceled. Configuration was not saved.");
+            return Ok(());
+        }
+
+        app_config.add_host(host_cfg);
+        app_config.save()?;
+        println!(
+            "✅ Configuration saved to: {}\n",
+            AppConfig::get_config_path()?.display()
+        );
+        return Ok(());
+    }
 
     let password = Password::new("SSH Password (leave empty to always be asked):")
         .with_display_mode(inquire::PasswordDisplayMode::Masked)
@@ -207,15 +267,17 @@ pub fn run_list_hosts() -> Result<()> {
     println!("\n📜 === Stored MikroTUI Routers ===");
     for (idx, h) in app_config.hosts.iter().enumerate() {
         let is_default = app_config.default_host.as_deref() == Some(&h.name);
-        let secret = if h.stored_obfuscated().is_some() {
-            "⚠️  config.json (obfuscated)"
+        let secret = if let Some(key) = &h.identity_file {
+            format!("🔑 key {}", key.display())
+        } else if h.stored_obfuscated().is_some() {
+            "⚠️  config.json (obfuscated)".to_string()
         } else if secrets::keyring_get(&h.account_id()).is_some() {
-            "🔐 keyring"
+            "🔐 keyring".to_string()
         } else {
-            "prompt"
+            "prompt".to_string()
         };
         println!(
-            " [{}] {} {} -> ssh {}@{}:{}  | password: {}",
+            " [{}] {} {} -> ssh {}@{}:{}  | auth: {}",
             idx + 1,
             h.name,
             if is_default { "(Default)" } else { "" },

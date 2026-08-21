@@ -155,6 +155,25 @@ around the check.
 > someone who is trying to get past it. The real guarantee is a RouterOS account in the
 > **`read` group** — give MikroTUI one of those rather than a full admin.
 
+### Authenticating with a key
+
+```bash
+mikrotui --host 192.168.88.1 --user admin -i ~/.ssh/id_ed25519
+```
+
+`mikrotui host add` can store a key per router, so `Ctrl+O` switching works with it too.
+Encrypted keys are supported; the passphrase is asked for before the TUI starts, since
+there is nowhere to ask once it has the terminal.
+
+> **RSA keys are refused.** The `rsa` crate carries an unfixed timing sidechannel
+> (`RUSTSEC-2023-0071`, no patched release upstream) that applies to private key
+> operations. MikroTUI's CI ignores that advisory precisely because it holds no RSA
+> private key, and accepting one here would quietly invalidate that reasoning. Use
+> `ssh-keygen -t ed25519`. ECDSA works too.
+
+`ssh-agent` is not supported. russh's agent client is the code covered by
+`RUSTSEC-2026-0154`, and MikroTUI does not link it.
+
 ### Credentials
 
 **MikroTUI does not store passwords by default.** In resolution order:

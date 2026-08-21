@@ -1,9 +1,10 @@
 use crate::models::*;
 use crate::ssh::guard;
 use crate::ssh::hostkey::{self, HostKeyIssue, HostKeyPolicy, IssueSlot};
+use crate::ssh::identity;
 use crate::ssh::parser;
 use anyhow::{anyhow, Result};
-use russh::keys::PublicKeyOrCertificate;
+use russh::keys::{PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use russh::{client, ChannelMsg};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,8 +17,10 @@ pub struct SshConfig {
     pub port: u16,
     pub user: String,
     pub pass: Option<String>,
-    #[allow(dead_code)]
-    pub key_path: Option<String>,
+    /// Private key to authenticate with, instead of a password.
+    pub key_path: Option<PathBuf>,
+    /// Passphrase for that key, when it is encrypted and one has been collected already.
+    pub key_passphrase: Option<String>,
     pub demo_mode: bool,
     /// What to do when the server key is not yet in `known_hosts`.
     pub host_key_policy: HostKeyPolicy,
@@ -33,6 +36,7 @@ impl Default for SshConfig {
             user: "admin".to_string(),
             pass: None,
             key_path: None,
+            key_passphrase: None,
             demo_mode: true,
             host_key_policy: HostKeyPolicy::Strict,
             known_hosts: None,
@@ -174,14 +178,31 @@ impl RouterClient {
         // Reaching this point means check_server_key returned true.
         *self.host_key_verified.lock().await = true;
 
-        let pass = self.config.pass.as_deref().unwrap_or("");
-        let auth_res = handle
-            .authenticate_password(&self.config.user, pass)
-            .await?;
+        let auth_res = match &self.config.key_path {
+            Some(path) => {
+                let key = identity::load(path, self.config.key_passphrase.as_deref())?;
+                handle
+                    .authenticate_publickey(
+                        &self.config.user,
+                        PrivateKeyWithHashAlg::new(Arc::new(key), None),
+                    )
+                    .await?
+            }
+            None => {
+                let pass = self.config.pass.as_deref().unwrap_or("");
+                handle
+                    .authenticate_password(&self.config.user, pass)
+                    .await?
+            }
+        };
 
         if !auth_res.success() {
+            let method = match &self.config.key_path {
+                Some(path) => format!("key {}", path.display()),
+                None => "password".to_string(),
+            };
             return Err(anyhow!(
-                "SSH authentication failed for user '{}' at {addr}",
+                "SSH authentication failed for user '{}' at {addr} using {method}",
                 self.config.user
             ));
         }

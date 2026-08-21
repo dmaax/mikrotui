@@ -14,7 +14,11 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{io, path::PathBuf, time::Duration};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use app::{App, InputMode, PingState};
 use config::AppConfig;
@@ -53,6 +57,10 @@ struct CliArgs {
     /// known_hosts file to verify the router against [default: ~/.ssh/known_hosts]
     #[arg(long, value_name = "PATH")]
     known_hosts: Option<PathBuf>,
+
+    /// Authenticate with an SSH private key instead of a password (Ed25519 or ECDSA)
+    #[arg(short = 'i', long, value_name = "PATH")]
+    identity: Option<PathBuf>,
 
     /// Refresh the visible tab automatically every N seconds (omit to refresh only on 'r')
     #[arg(long, value_name = "SECONDS")]
@@ -442,6 +450,22 @@ fn resolve_password(
     Ok(None)
 }
 
+/// Read an encrypted key's passphrase now, while a terminal is still available.
+///
+/// `connect` may later run inside the TUI, where there is nowhere to ask.
+fn collect_key_passphrase(path: &Path, interactive: bool) -> Result<Option<String>> {
+    let prompt = |label: &str| -> Result<String> {
+        Ok(inquire::Password::new(label)
+            .with_display_mode(inquire::PasswordDisplayMode::Masked)
+            .without_confirmation()
+            .prompt()?)
+    };
+
+    // Validating here also surfaces a missing, unreadable or RSA key before the TUI takes
+    // over the screen, where the error would be invisible.
+    ssh::identity::prepare(path, interactive.then_some(&prompt))
+}
+
 fn determine_ssh_config(cli: &CliArgs, interactive: bool) -> Result<Option<SshConfig>> {
     let (host_key_policy, known_hosts) = host_key_settings(cli);
 
@@ -457,13 +481,25 @@ fn determine_ssh_config(cli: &CliArgs, interactive: bool) -> Result<Option<SshCo
     if let Some(host) = &cli.host {
         let user = cli.user.clone().unwrap_or_else(|| "admin".to_string());
         let port = cli.port.unwrap_or(22);
-        let pass = resolve_password(cli, &user, host, port, None, false, interactive)?;
+        // A key replaces the password entirely; do not prompt for one that is unused.
+        let (pass, key_path, key_passphrase) = match cli.identity.clone() {
+            Some(path) => {
+                let passphrase = collect_key_passphrase(&path, interactive)?;
+                (None, Some(path), passphrase)
+            }
+            None => (
+                resolve_password(cli, &user, host, port, None, false, interactive)?,
+                None,
+                None,
+            ),
+        };
         return Ok(Some(SshConfig {
             host: host.clone(),
             port,
             user,
             pass,
-            key_path: None,
+            key_path,
+            key_passphrase,
             demo_mode: false,
             host_key_policy,
             known_hosts,
@@ -474,6 +510,26 @@ fn determine_ssh_config(cli: &CliArgs, interactive: bool) -> Result<Option<SshCo
         let config = AppConfig::load()?;
         if !config.hosts.is_empty() {
             let host_cfg = wizard::prompt_select_host(&config)?;
+            // A key configured for this host, or one given on the command line.
+            let identity = cli
+                .identity
+                .clone()
+                .or_else(|| host_cfg.identity_file.clone());
+            if let Some(path) = &identity {
+                let key_passphrase = collect_key_passphrase(path, interactive)?;
+                return Ok(Some(SshConfig {
+                    host: host_cfg.host.clone(),
+                    port: host_cfg.port,
+                    user: host_cfg.user.clone(),
+                    pass: None,
+                    key_path: identity.clone(),
+                    key_passphrase,
+                    demo_mode: false,
+                    host_key_policy,
+                    known_hosts,
+                }));
+            }
+
             let stored = secrets::keyring_get(&host_cfg.account_id())
                 .map(|p| (p, false))
                 .or_else(|| host_cfg.file_password().map(|p| (p, true)));
@@ -496,6 +552,7 @@ fn determine_ssh_config(cli: &CliArgs, interactive: bool) -> Result<Option<SshCo
                 user: host_cfg.user.clone(),
                 pass,
                 key_path: None,
+                key_passphrase: None,
                 demo_mode: false,
                 host_key_policy,
                 known_hosts,
