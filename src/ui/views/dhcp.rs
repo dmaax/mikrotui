@@ -2,7 +2,7 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
@@ -44,9 +44,14 @@ pub fn render_dhcp_leases(f: &mut Frame, app: &App, area: Rect) {
         .style(row_style)
     });
 
-    let table = Table::new(
-        rows,
-        [
+    super::render_scrollable_table(
+        f,
+        app,
+        area,
+        "DHCP Server Leases",
+        header,
+        rows.collect(),
+        vec![
             Constraint::Length(4),
             Constraint::Length(18),
             Constraint::Length(20),
@@ -55,14 +60,5 @@ pub fn render_dhcp_leases(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(10),
             Constraint::Min(12),
         ],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border)
-            .title(format!(" DHCP Server Leases ({}) ", leases.len())),
     );
-
-    f.render_widget(table, area);
 }

@@ -2,7 +2,7 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
@@ -42,21 +42,17 @@ pub fn render_logs(f: &mut Frame, app: &App, area: Rect) {
         .style(row_style)
     });
 
-    let table = Table::new(
-        rows,
-        [
+    super::render_scrollable_table(
+        f,
+        app,
+        area,
+        "System Logs - Live Stream",
+        header,
+        rows.collect(),
+        vec![
             Constraint::Length(12),
             Constraint::Length(24),
             Constraint::Min(30),
         ],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border)
-            .title(format!(" System Logs - Live Stream ({}) ", logs.len())),
     );
-
-    f.render_widget(table, area);
 }

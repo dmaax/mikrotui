@@ -2,7 +2,7 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
@@ -45,14 +45,14 @@ pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
         .style(row_style)
     });
 
-    let title = format!(
-        " 📡 Network Neighbors (MNDP/CDP/LLDP) [{}] ",
-        neighbors.len()
-    );
-
-    let table = Table::new(
-        rows,
-        [
+    super::render_scrollable_table(
+        f,
+        app,
+        area,
+        "📡 Network Neighbors (MNDP/CDP/LLDP)",
+        header,
+        rows.collect(),
+        vec![
             Constraint::Length(4),  // #
             Constraint::Length(16), // Interface
             Constraint::Length(22), // Identity
@@ -61,14 +61,5 @@ pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(18), // Board
             Constraint::Min(16),    // Version
         ],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border_focus)
-            .title(title),
     );
-
-    f.render_widget(table, area);
 }

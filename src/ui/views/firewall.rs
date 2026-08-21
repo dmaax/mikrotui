@@ -2,7 +2,7 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
@@ -56,9 +56,14 @@ pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
         .style(row_style)
     });
 
-    let table = Table::new(
-        rows,
-        [
+    super::render_scrollable_table(
+        f,
+        app,
+        area,
+        "Firewall Filter Rules (Read-Only)",
+        header,
+        rows.collect(),
+        vec![
             Constraint::Length(4),
             Constraint::Length(10),
             Constraint::Length(10),
@@ -70,17 +75,5 @@ pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(10),
             Constraint::Min(15),
         ],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border)
-            .title(format!(
-                " Firewall Filter Rules (Read-Only) ({}) ",
-                rules.len()
-            )),
     );
-
-    f.render_widget(table, area);
 }

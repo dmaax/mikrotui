@@ -37,6 +37,14 @@ pub fn render_help_modal(f: &mut Frame, app: &App) {
         ),
         ("↑ / ↓ (or k / j)", "Navigate up / down through table rows"),
         (
+            "PgUp / PgDn",
+            "Scroll a whole screenful at a time (also Ctrl+B / Ctrl+F)",
+        ),
+        (
+            "Home / End (g / G)",
+            "Jump to the first / last row of the list",
+        ),
+        (
             "Enter",
             "Open Item Details modal (view full properties & complete comments)",
         ),

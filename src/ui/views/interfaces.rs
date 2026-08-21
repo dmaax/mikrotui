@@ -2,7 +2,7 @@ use crate::app::App;
 use ratatui::{
     layout::{Constraint, Rect},
     style::Modifier,
-    widgets::{Block, Borders, Cell, Row, Table},
+    widgets::{Cell, Row},
     Frame,
 };
 
@@ -51,9 +51,14 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
         .style(row_style)
     });
 
-    let table = Table::new(
-        rows,
-        [
+    super::render_scrollable_table(
+        f,
+        app,
+        area,
+        "Network Interfaces",
+        header,
+        rows.collect(),
+        vec![
             Constraint::Length(4),
             Constraint::Length(3),
             Constraint::Length(20),
@@ -64,14 +69,5 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(14),
             Constraint::Min(15),
         ],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border)
-            .title(format!(" Network Interfaces ({}) ", interfaces.len())),
     );
-
-    f.render_widget(table, area);
 }
