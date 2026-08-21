@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/dmaax/mikrotui/compare/v0.2.2...v0.3.0) - 2026-08-21
+
+### Added
+
+- [**breaking**] verify SSH host keys and stop persisting passwords by default
+- [**breaking**] enforce read-only with a command allowlist
+
+### Fixed
+
+- [**breaking**] upgrade russh to 0.63 to close a remotely reachable DoS
+- enable the keychain store so the macOS keyring build compiles
+- point at --accept-new-hostkey when an unknown key blocks a script
+
+### Other
+
+- gate pushes and pull requests on tests, lints and advisories
+- clear the remaining clippy warnings so CI can gate on them
+- apply rustfmt across the tree
+
 ## [0.2.2](https://github.com/dmaax/mikrotui/compare/v0.2.1...v0.2.2) - 2026-08-07
 
 ### Added
