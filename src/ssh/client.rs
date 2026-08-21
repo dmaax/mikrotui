@@ -701,14 +701,16 @@ impl RouterClient {
     pub async fn exec_command(&self, cmd: &str) -> Result<String> {
         guard::ensure_read_only(cmd).map_err(|e| anyhow!(e))?;
 
+        // Retry only on a genuine failure. Treating empty output as a dead session made
+        // every refresh tear down and re-authenticate the connection whenever a resource
+        // was legitimately empty — no DHCP leases, no neighbours, no firewall rules.
         match self.try_exec_command(cmd).await {
-            Ok(output) if !output.is_empty() => Ok(output),
-            _ => {
-                {
-                    let mut conn_lock = self.is_connected.lock().await;
-                    *conn_lock = false;
-                }
-                self.connect().await?;
+            Ok(output) => Ok(output),
+            Err(first) => {
+                *self.is_connected.lock().await = false;
+                self.connect().await.map_err(|reconnect| {
+                    anyhow!("{cmd} failed ({first}), and reconnecting failed too: {reconnect}")
+                })?;
                 self.try_exec_command(cmd).await
             }
         }

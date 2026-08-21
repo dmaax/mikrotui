@@ -335,7 +335,12 @@ impl App {
     pub fn get_selected_ip_or_default(&self) -> String {
         match self.active_tab {
             Tab::IpAddresses => {
-                if let Some(item) = self.filtered_ip_addresses().get(self.selected_index) {
+                if let Some(item) = {
+                    let list = self.filtered_ip_addresses();
+                    self.selection_in(list.len())
+                        .and_then(|i| list.get(i))
+                        .copied()
+                } {
                     return item
                         .address
                         .split('/')
@@ -345,7 +350,12 @@ impl App {
                 }
             }
             Tab::IpRoutes => {
-                if let Some(item) = self.filtered_ip_routes().get(self.selected_index) {
+                if let Some(item) = {
+                    let list = self.filtered_ip_routes();
+                    self.selection_in(list.len())
+                        .and_then(|i| list.get(i))
+                        .copied()
+                } {
                     if !item.gateway.is_empty() && !item.gateway.contains("ether") {
                         return item.gateway.clone();
                     }
@@ -360,12 +370,22 @@ impl App {
                 }
             }
             Tab::DhcpLeases => {
-                if let Some(item) = self.filtered_dhcp_leases().get(self.selected_index) {
+                if let Some(item) = {
+                    let list = self.filtered_dhcp_leases();
+                    self.selection_in(list.len())
+                        .and_then(|i| list.get(i))
+                        .copied()
+                } {
                     return item.address.clone();
                 }
             }
             Tab::Neighbors => {
-                if let Some(item) = self.filtered_neighbors().get(self.selected_index) {
+                if let Some(item) = {
+                    let list = self.filtered_neighbors();
+                    self.selection_in(list.len())
+                        .and_then(|i| list.get(i))
+                        .copied()
+                } {
                     if !item.ip_address.is_empty() {
                         return item.ip_address.clone();
                     }
@@ -455,49 +475,38 @@ impl App {
             logs,
         } = data;
 
+        // `Some(empty)` means the router really has none of that resource, so it replaces
+        // what is on screen. Only `None` — the fetch failed — leaves the previous rows in
+        // place. Discarding empty results kept deleted rules and expired leases on display
+        // indefinitely.
         if let Some(res) = system {
             if !res.board_name.is_empty() || !res.version.is_empty() {
                 self.system_resource = res;
             }
         }
-        if let Some(ifaces) = interfaces {
-            if !ifaces.is_empty() {
-                self.interfaces = ifaces;
-            }
+        if let Some(v) = interfaces {
+            self.interfaces = v;
         }
-        if let Some(addrs) = ip_addresses {
-            if !addrs.is_empty() {
-                self.ip_addresses = addrs;
-            }
+        if let Some(v) = ip_addresses {
+            self.ip_addresses = v;
         }
-        if let Some(routes) = ip_routes {
-            if !routes.is_empty() {
-                self.ip_routes = routes;
-            }
+        if let Some(v) = ip_routes {
+            self.ip_routes = v;
         }
-        if let Some(dhcp) = dhcp_leases {
-            if !dhcp.is_empty() {
-                self.dhcp_leases = dhcp;
-            }
+        if let Some(v) = dhcp_leases {
+            self.dhcp_leases = v;
         }
-        if let Some(fw) = firewall_rules {
-            if !fw.is_empty() {
-                self.firewall_rules = fw;
-            }
+        if let Some(v) = firewall_rules {
+            self.firewall_rules = v;
         }
-        if let Some(neigh) = neighbors {
-            if !neigh.is_empty() {
-                self.neighbors = neigh;
-            }
+        if let Some(v) = neighbors {
+            self.neighbors = v;
         }
-        if let Some(l) = logs {
-            if !l.is_empty() {
-                self.logs = l;
-            }
+        if let Some(v) = logs {
+            self.logs = v;
         }
 
-        // A refresh can return fewer rows than before (a lease expired, a rule was
-        // removed on the router), leaving the selection past the end of the new list.
+        // The list under the selection may have shrunk, or emptied entirely.
         self.clamp_selection();
 
         self.is_loading = false;
@@ -835,7 +844,7 @@ fn is_pingable_target(target: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::Interface;
+    use crate::models::{DhcpLease, Interface};
     use crate::ssh::{RouterClient, SshConfig};
 
     fn app() -> App {
@@ -971,6 +980,74 @@ mod tests {
             "a failed ping must not leave the modal spinning"
         );
         assert!(app.status_message.contains("connection refused"));
+    }
+
+    /// A resource that empties on the router has to disappear from the screen. Skipping
+    /// empty results kept deleted firewall rules and expired leases on display for the
+    /// rest of the session.
+    #[test]
+    fn a_resource_that_empties_stops_being_displayed() {
+        let mut app = app();
+        app.interfaces = vec![Interface {
+            name: "ether1".to_string(),
+            ..Default::default()
+        }];
+        app.dhcp_leases = vec![DhcpLease::default()];
+
+        app.apply_loaded_data(LoadedData {
+            interfaces: Some(Vec::new()),
+            dhcp_leases: Some(Vec::new()),
+            ..Default::default()
+        });
+
+        assert!(app.interfaces.is_empty(), "an empty result must be applied");
+        assert!(app.dhcp_leases.is_empty());
+    }
+
+    /// A fetch that failed is different from one that returned nothing: the previous rows
+    /// stay, rather than the screen blanking on a transient error.
+    #[test]
+    fn a_failed_fetch_leaves_the_previous_rows_alone() {
+        let mut app = app();
+        app.interfaces = vec![Interface {
+            name: "ether1".to_string(),
+            ..Default::default()
+        }];
+
+        app.apply_loaded_data(LoadedData {
+            interfaces: None,
+            ..Default::default()
+        });
+
+        assert_eq!(app.interfaces.len(), 1, "None means the fetch failed");
+    }
+
+    /// The ping target and the detail modal must read the same row the table highlights.
+    #[test]
+    fn the_ping_target_follows_the_clamped_selection() {
+        let mut app = app();
+        app.active_tab = Tab::DhcpLeases;
+        app.dhcp_leases = vec![
+            DhcpLease {
+                address: "192.168.88.10".to_string(),
+                ..Default::default()
+            },
+            DhcpLease {
+                address: "192.168.88.11".to_string(),
+                ..Default::default()
+            },
+        ];
+
+        app.selected_index = 1;
+        assert_eq!(app.get_selected_ip_or_default(), "192.168.88.11");
+
+        // An index past the end resolves to the last row, which is what is highlighted,
+        // rather than silently falling back to 8.8.8.8.
+        app.selected_index = 99;
+        assert_eq!(app.get_selected_ip_or_default(), "192.168.88.11");
+
+        app.dhcp_leases.clear();
+        assert_eq!(app.get_selected_ip_or_default(), "8.8.8.8");
     }
 
     /// `is_loading` gates every refresh, so a failure has to clear it or reloading is

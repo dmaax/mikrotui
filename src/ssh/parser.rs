@@ -500,30 +500,111 @@ pub fn parse_neighbors(raw: &str) -> Vec<Neighbor> {
         .collect()
 }
 
-pub fn parse_logs(raw: &str) -> Vec<LogEntry> {
-    let cleaned = strip_ansi_codes(raw);
-    let mut entries = Vec::new();
-    for line in cleaned.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = line.splitn(3, ' ').collect();
-        if parts.len() == 3 {
-            entries.push(LogEntry {
-                time: parts[0].to_string(),
-                topics: parts[1].to_string(),
-                message: parts[2].to_string(),
-            });
-        } else {
-            entries.push(LogEntry {
-                time: "".to_string(),
-                topics: "info".to_string(),
-                message: line.to_string(),
-            });
+/// A `mmm/dd` or `yyyy-mm-dd` date, as RouterOS prints for entries older than today.
+fn is_log_date(token: &str) -> bool {
+    if let Some((month, day)) = token.split_once('/') {
+        return month.len() == 3
+            && month.chars().all(|c| c.is_ascii_alphabetic())
+            && !day.is_empty()
+            && day.chars().all(|c| c.is_ascii_digit());
+    }
+    let parts: Vec<&str> = token.split('-').collect();
+    parts.len() == 3
+        && parts[0].len() == 4
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// A `hh:mm:ss` time of day.
+fn is_log_time(token: &str) -> bool {
+    let parts: Vec<&str> = token.split(':').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// A RouterOS topic list, e.g. `system,info` or `dhcp,info,debug`.
+///
+/// Real output always pairs a facility with a severity, so the comma is what separates a
+/// topic list from the first word of the message: without that check, `14:10:01 router
+/// was rebooted` put "router" in the topics column and dropped it from the message. A
+/// bare severity is accepted as well, since RouterOS emits those on their own.
+fn is_log_topics(token: &str) -> bool {
+    const SEVERITIES: &[&str] = &["info", "error", "warning", "critical", "debug"];
+
+    if token.is_empty()
+        || !token
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ',' | '-' | '_'))
+    {
+        return false;
+    }
+
+    token.contains(',') || SEVERITIES.contains(&token)
+}
+
+/// Peel the first whitespace-separated token off `s`.
+fn split_first_token(s: &str) -> (&str, &str) {
+    match s.split_once(char::is_whitespace) {
+        Some((token, tail)) => (token, tail.trim_start()),
+        None => (s, ""),
+    }
+}
+
+/// Split one `/log print` line into time, topics and message.
+///
+/// The timestamp is one token for entries from today (`14:10:01`) but two once they age
+/// (`aug/21 14:10:01`). Splitting on the first two spaces regardless put the time of day
+/// into the topics column and shifted the message, so every entry older than a day
+/// displayed wrong.
+fn parse_log_line(line: &str) -> LogEntry {
+    let mut rest = line;
+    let mut stamp = String::new();
+
+    // An optional date, then an optional time of day, in that order.
+    for is_part in [is_log_date as fn(&str) -> bool, is_log_time] {
+        let (token, tail) = split_first_token(rest);
+        if is_part(token) {
+            if !stamp.is_empty() {
+                stamp.push(' ');
+            }
+            stamp.push_str(token);
+            rest = tail;
         }
     }
-    entries
+
+    if stamp.is_empty() {
+        // Nothing that looks like a timestamp: keep the line intact rather than guessing.
+        return LogEntry {
+            time: String::new(),
+            topics: "info".to_string(),
+            message: line.to_string(),
+        };
+    }
+
+    let (token, tail) = split_first_token(rest);
+    let (topics, message) = if is_log_topics(token) {
+        (token.to_string(), tail.to_string())
+    } else {
+        ("info".to_string(), rest.to_string())
+    };
+
+    LogEntry {
+        time: stamp,
+        topics,
+        message,
+    }
+}
+
+pub fn parse_logs(raw: &str) -> Vec<LogEntry> {
+    strip_ansi_codes(raw)
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(parse_log_line)
+        .collect()
 }
 
 pub fn parse_ping_output(target: &str, raw: &str) -> PingResult {
@@ -615,6 +696,53 @@ mod tests {
         assert_eq!(parsed[0].board, "CRS326-24G-2S+");
         assert_eq!(parsed[1].identity, "AP-Office-Floor2");
         assert_eq!(parsed[1].board, "cAP ac");
+    }
+
+    /// RouterOS prefixes entries older than today with a date, which used to land in the
+    /// topics column and shift the message one field to the right.
+    #[test]
+    fn dated_log_lines_keep_their_columns() {
+        let raw = "aug/21 14:10:01 system,info router rebooted\n\
+                   14:12:30 ssh,info user admin logged in from 192.168.88.100";
+        let parsed = parse_logs(raw);
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].time, "aug/21 14:10:01");
+        assert_eq!(parsed[0].topics, "system,info");
+        assert_eq!(parsed[0].message, "router rebooted");
+
+        assert_eq!(parsed[1].time, "14:12:30");
+        assert_eq!(parsed[1].topics, "ssh,info");
+        assert_eq!(
+            parsed[1].message,
+            "user admin logged in from 192.168.88.100"
+        );
+    }
+
+    #[test]
+    fn iso_dated_log_lines_are_understood_too() {
+        let parsed = parse_logs("2026-08-21 09:00:00 dhcp,info assigned 192.168.88.100");
+        assert_eq!(parsed[0].time, "2026-08-21 09:00:00");
+        assert_eq!(parsed[0].topics, "dhcp,info");
+        assert_eq!(parsed[0].message, "assigned 192.168.88.100");
+    }
+
+    /// Anything without a recognisable timestamp is kept whole rather than guessed at.
+    #[test]
+    fn untimestamped_log_lines_are_left_intact() {
+        let parsed = parse_logs("could not connect to log server");
+        assert_eq!(parsed[0].time, "");
+        assert_eq!(parsed[0].topics, "info");
+        assert_eq!(parsed[0].message, "could not connect to log server");
+    }
+
+    /// A timestamp followed by prose rather than a topic list.
+    #[test]
+    fn a_message_without_topics_is_not_mistaken_for_one() {
+        let parsed = parse_logs("14:10:01 router was rebooted by watchdog");
+        assert_eq!(parsed[0].time, "14:10:01");
+        assert_eq!(parsed[0].topics, "info");
+        assert_eq!(parsed[0].message, "router was rebooted by watchdog");
     }
 
     #[test]
