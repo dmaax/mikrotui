@@ -13,6 +13,10 @@ categories = ["command-line-utilities", "network-programming"]
 exclude = [
     ".gitignore",
     "target/",
+    # Contributor guidance, not useful to anyone installing the binary. CLAUDE.md is a
+    # symlink, which is also better kept out of the published tarball.
+    "AGENTS.md",
+    "CLAUDE.md",
 ]
 
 [features]
