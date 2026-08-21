@@ -3,8 +3,8 @@ use crate::ssh::guard;
 use crate::ssh::hostkey::{self, HostKeyIssue, HostKeyPolicy, IssueSlot};
 use crate::ssh::parser;
 use anyhow::{anyhow, Result};
+use russh::keys::PublicKeyOrCertificate;
 use russh::{client, ChannelMsg};
-use russh_keys::key;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -58,18 +58,24 @@ struct SshHandler {
     issue: IssueSlot,
 }
 
-#[async_trait::async_trait]
 impl client::Handler for SshHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &key::PublicKey,
+        server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // Certificate-based host keys would need their CA validated, which MikroTUI
+        // does not implement; RouterOS presents a plain key. Refuse anything else
+        // rather than let it through unverified.
+        let PublicKeyOrCertificate::PublicKey { key, .. } = server_public_key else {
+            return Ok(false);
+        };
+
         Ok(hostkey::verify(
             &self.host,
             self.port,
-            server_public_key,
+            key,
             self.policy,
             &self.known_hosts,
             &self.issue,
@@ -160,7 +166,7 @@ impl RouterClient {
             .authenticate_password(&self.config.user, pass)
             .await?;
 
-        if !auth_res {
+        if !auth_res.success() {
             return Err(anyhow!(
                 "SSH authentication failed for user '{}' at {addr}",
                 self.config.user

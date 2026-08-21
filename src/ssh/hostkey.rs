@@ -9,7 +9,8 @@
 //! the connection fail with a [`HostKeyIssue`], which the caller surfaces (and, outside
 //! the TUI, may resolve by prompting the user before retrying).
 
-use russh_keys::key::PublicKey;
+use russh::keys::ssh_key::PublicKey;
+use russh::keys::HashAlg;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -66,7 +67,7 @@ impl std::fmt::Display for HostKeyIssue {
         match self {
             HostKeyIssue::Unknown { host, port, .. } => write!(
                 f,
-                "the host key for {host}:{port} is not in known_hosts ({} SHA256:{}). \
+                "the host key for {host}:{port} is not in known_hosts ({} {}). \
                  Connect once outside the TUI to review and accept it, or pass --accept-new-hostkey.",
                 self.key_type(),
                 self.fingerprint()
@@ -74,7 +75,7 @@ impl std::fmt::Display for HostKeyIssue {
             HostKeyIssue::Changed { host, port, line, .. } => write!(
                 f,
                 "REMOTE HOST IDENTIFICATION HAS CHANGED for {host}:{port}. The key offered now is \
-                 {} SHA256:{}, which does not match the entry on line {line} of known_hosts. \
+                 {} {}, which does not match the entry on line {line} of known_hosts. \
                  This may be a man-in-the-middle attack. If the router was genuinely reinstalled, \
                  remove that line and reconnect.",
                 self.key_type(),
@@ -105,8 +106,9 @@ pub fn verify(
     known_hosts: &PathBuf,
     slot: &IssueSlot,
 ) -> bool {
-    let fingerprint = key.fingerprint();
-    let key_type = key.name().to_string();
+    // Display renders this as "SHA256:<base64>", matching OpenSSH.
+    let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
+    let key_type = key.algorithm().to_string();
 
     let record_issue = |issue: HostKeyIssue| {
         if let Ok(mut guard) = slot.lock() {
@@ -116,7 +118,7 @@ pub fn verify(
 
     // A missing known_hosts file simply means nothing is trusted yet.
     let known = if known_hosts.exists() {
-        russh_keys::check_known_hosts_path(host, port, key, known_hosts)
+        russh::keys::check_known_hosts_path(host, port, key, known_hosts)
     } else {
         Ok(false)
     };
@@ -146,7 +148,7 @@ pub fn verify(
                 false
             }
         },
-        Err(russh_keys::Error::KeyChanged { line }) => {
+        Err(russh::keys::Error::KeyChanged { line }) => {
             record_issue(HostKeyIssue::Changed {
                 host: host.to_string(),
                 port,
@@ -185,6 +187,6 @@ pub fn learn(host: &str, port: u16, key: &PublicKey, known_hosts: &PathBuf) -> a
         crate::config::create_private_file(known_hosts)?;
     }
 
-    russh_keys::learn_known_hosts_path(host, port, key, known_hosts)
+    russh::keys::known_hosts::learn_known_hosts_path(host, port, key, known_hosts)
         .map_err(|e| anyhow::anyhow!("could not write to {}: {e}", known_hosts.display()))
 }

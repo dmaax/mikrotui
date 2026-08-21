@@ -67,14 +67,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-audit
 
-      # RUSTSEC-2026-0154 — unbounded 32-bit allocation in russh, patched in 0.60.3.
+      # RUSTSEC-2023-0071 — Marvin attack, a timing sidechannel in `rsa`.
       #
-      # Not reachable from MikroTUI: the flaw is in the SSH *agent* frame parser, and
-      # MikroTUI never uses ssh-agent. It authenticates with a password over a plain
-      # client session and does not link, forward or speak to an agent anywhere.
+      # Ignored because upstream has no fix: the advisory lists `patched = []`, and the
+      # crate reaches us transitively through russh, so there is no version to move to.
       #
-      # Drop this flag once russh is on >= 0.60.3. That is not a plain version bump:
-      # russh-keys was folded into russh, so src/ssh/hostkey.rs has to be ported.
+      # It also does not apply to how MikroTUI uses RSA. The attack recovers a key by
+      # timing *private-key* decryption. MikroTUI is a client that authenticates with a
+      # password and never holds an RSA private key; RSA appears only to verify the
+      # router's host key signature, which is a public-key operation.
       #
-      # Any advisory NOT listed here still fails the build.
-      - run: cargo audit --deny warnings --ignore RUSTSEC-2026-0154
+      # Revisit if MikroTUI ever gains SSH key authentication.
+      #
+      # Unmaintained/unsound advisories (fxhash, paste, lru) are reported but do not
+      # fail the run: they arrive through ratatui and inquire and are not ours to fix.
+      # Any *vulnerability* other than the one ignored here fails the build.
+      - run: cargo audit --ignore RUSTSEC-2023-0071

@@ -209,7 +209,7 @@ async fn connect_interactively(mut ssh_config: SshConfig) -> Result<RouterClient
                         println!(
                             "\n🔑 The authenticity of host '{host}:{port}' cannot be established."
                         );
-                        println!("   {key_type} key fingerprint is SHA256:{fingerprint}");
+                        println!("   {key_type} key fingerprint is {fingerprint}");
                         println!("   Verify it on the router with: /ip ssh print\n");
 
                         // Without a terminal there is nobody to answer, and inquire's own
