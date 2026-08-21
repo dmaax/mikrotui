@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to a PR makes the first run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: Format, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test (default features)
+        run: cargo test --all-targets
+
+      # The keyring backend is behind an optional feature, so the default run
+      # never compiles it.
+      - name: Test (keyring feature)
+        run: cargo test --all-targets --features keyring
+
+  cross-build:
+    name: Build ${{ matrix.os }}${{ matrix.features && ' (keyring)' || '' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        features: ['', 'keyring']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Each platform selects a different credential store behind cfg(), so a
+      # Linux-only pipeline would never compile the macOS or Windows one.
+      - name: Build
+        run: cargo build --locked ${{ matrix.features && format('--features {0}', matrix.features) || '' }}
+
+  audit:
+    name: Security advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+
+      # RUSTSEC-2026-0154 — unbounded 32-bit allocation in russh, patched in 0.60.3.
+      #
+      # Not reachable from MikroTUI: the flaw is in the SSH *agent* frame parser, and
+      # MikroTUI never uses ssh-agent. It authenticates with a password over a plain
+      # client session and does not link, forward or speak to an agent anywhere.
+      #
+      # Drop this flag once russh is on >= 0.60.3. That is not a plain version bump:
+      # russh-keys was folded into russh, so src/ssh/hostkey.rs has to be ported.
+      #
+      # Any advisory NOT listed here still fails the build.
+      - run: cargo audit --deny warnings --ignore RUSTSEC-2026-0154
