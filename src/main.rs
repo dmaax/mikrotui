@@ -21,7 +21,7 @@ use config::AppConfig;
 use ssh::{HostKeyIssue, HostKeyPolicy, RouterClient, SshConfig};
 
 #[derive(Parser, Debug)]
-#[command(name = "mikrotui", version = env!("CARGO_PKG_VERSION"), about = "WinBox TUI for MikroTik via SSH (Read-Only with Safe Mode)")]
+#[command(name = "mikrotui", version = env!("CARGO_PKG_VERSION"), about = "WinBox-style TUI for MikroTik RouterOS over SSH (read-only)")]
 struct CliArgs {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -212,10 +212,19 @@ async fn connect_interactively(mut ssh_config: SshConfig) -> Result<RouterClient
                         println!("   {key_type} key fingerprint is SHA256:{fingerprint}");
                         println!("   Verify it on the router with: /ip ssh print\n");
 
-                        let accept =
-                            inquire::Confirm::new("Accept this key and add it to known_hosts?")
-                                .with_default(false)
-                                .prompt()?;
+                        // Without a terminal there is nobody to answer, and inquire's own
+                        // "not a TTY" error says nothing about how to proceed. Report the
+                        // issue instead: it names --accept-new-hostkey.
+                        let accept = match inquire::Confirm::new(
+                            "Accept this key and add it to known_hosts?",
+                        )
+                        .with_default(false)
+                        .prompt()
+                        {
+                            Ok(answer) => answer,
+                            Err(inquire::InquireError::NotTTY) => return Err(anyhow!("{issue}")),
+                            Err(e) => return Err(e.into()),
+                        };
 
                         if !accept {
                             return Err(anyhow!("host key rejected; not connecting"));

@@ -608,7 +608,7 @@ impl RouterClient {
                 LogEntry {
                     time: "14:13:00".to_string(),
                     topics: "system,info,safe-mode".to_string(),
-                    message: "Safe Mode active for session (Read-Only Mode Enforcement)"
+                    message: "read-only session opened (no write commands will be sent)"
                         .to_string(),
                 },
             ]);

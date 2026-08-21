@@ -14,7 +14,7 @@ pub fn render_header(f: &mut Frame, app: &App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Length(35), // Title & App Name
-            Constraint::Min(30),    // Active Host & Safe Mode Status
+            Constraint::Min(30),    // Active host & host key status
         ])
         .split(area);
 
