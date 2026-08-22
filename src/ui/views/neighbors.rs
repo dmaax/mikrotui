@@ -1,27 +1,19 @@
+use super::{Column, Priority};
 use crate::app::App;
-use ratatui::{
-    layout::{Constraint, Rect},
-    style::Modifier,
-    widgets::{Cell, Row},
-    Frame,
-};
+use ratatui::{layout::Rect, style::Modifier, widgets::Cell, Frame};
+
+const COLUMNS: &[Column] = &[
+    Column::new("ID", 4, Priority::Extra),
+    Column::new("Interface", 14, Priority::Useful),
+    Column::new("Identity", 22, Priority::Essential),
+    Column::new("IP Address", 16, Priority::Essential),
+    Column::new("MAC Address", 20, Priority::Useful),
+    Column::new("Platform", 12, Priority::Extra),
+    Column::new("Board / Version", 20, Priority::Useful),
+];
 
 pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
-
-    let header_cells = [
-        "#",
-        "Interface",
-        "Device Identity",
-        "IP Address",
-        "MAC Address",
-        "Board / Model",
-        "OS Version",
-    ]
-    .iter()
-    .map(|h| Cell::from(*h).style(t.header_cell));
-
-    let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let neighbors = app.filtered_neighbors();
 
@@ -35,16 +27,18 @@ pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
             t.normal_text
         };
 
-        Row::new(vec![
-            Cell::from(format!("{}", idx + 1)),
-            Cell::from(n.interface.as_str()).style(t.accent),
-            Cell::from(n.identity.as_str()).style(t.title.add_modifier(Modifier::BOLD)),
-            Cell::from(n.ip_address.as_str()).style(t.success),
-            Cell::from(n.mac_address.as_str()),
-            Cell::from(n.board.as_str()),
-            Cell::from(n.version.as_str()).style(t.muted_text),
-        ])
-        .style(row_style)
+        super::TableRow {
+            cells: vec![
+                Cell::from(format!("{}", idx + 1)),
+                Cell::from(n.interface.as_str()).style(t.accent),
+                Cell::from(n.identity.as_str()).style(t.title.add_modifier(Modifier::BOLD)),
+                Cell::from(n.ip_address.as_str()).style(t.success),
+                Cell::from(n.mac_address.as_str()),
+                Cell::from(n.board.as_str()),
+                Cell::from(n.version.as_str()).style(t.muted_text),
+            ],
+            style: row_style,
+        }
     });
 
     super::render_scrollable_table(
@@ -52,16 +46,8 @@ pub fn render_neighbors(f: &mut Frame, app: &App, area: Rect) {
         app,
         area,
         "📡 Network Neighbors (MNDP/CDP/LLDP)",
-        header,
+        COLUMNS,
         rows.collect(),
-        vec![
-            Constraint::Length(4),  // #
-            Constraint::Length(16), // Interface
-            Constraint::Length(22), // Identity
-            Constraint::Length(18), // IP Address
-            Constraint::Length(20), // MAC Address
-            Constraint::Length(18), // Board
-            Constraint::Min(16),    // Version
-        ],
+        t.header_cell,
     );
 }

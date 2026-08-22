@@ -1,27 +1,20 @@
+use super::{Column, Priority};
 use crate::app::App;
-use ratatui::{
-    layout::{Constraint, Rect},
-    style::Modifier,
-    widgets::{Cell, Row},
-    Frame,
-};
+use ratatui::{layout::Rect, style::Modifier, widgets::Cell, Frame};
+
+const COLUMNS: &[Column] = &[
+    Column::new("ID", 4, Priority::Extra),
+    Column::new("Flags", 6, Priority::Useful),
+    Column::new("Dst. Address", 22, Priority::Essential),
+    Column::new("Gateway", 22, Priority::Essential),
+    Column::new("Distance", 10, Priority::Useful),
+    Column::new("Table", 15, Priority::Extra),
+    Column::new("Comment", 15, Priority::Useful),
+];
 
 pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let routes = app.filtered_ip_routes();
-
-    let header_cells = [
-        "ID",
-        "Flags",
-        "Dst. Address",
-        "Gateway",
-        "Distance",
-        "Routing Table",
-        "Comment",
-    ]
-    .iter()
-    .map(|h| Cell::from(*h).style(t.header_cell));
-    let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let selected = app.selection_in(routes.len());
 
@@ -41,16 +34,18 @@ pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
             t.normal_text
         };
 
-        Row::new(vec![
-            Cell::from(item.id.as_str()),
-            Cell::from(flags).style(t.accent.add_modifier(Modifier::BOLD)),
-            Cell::from(item.dst_address.as_str()).style(t.success.add_modifier(Modifier::BOLD)),
-            Cell::from(item.gateway.as_str()).style(t.warning),
-            Cell::from(format!("{}", item.distance)),
-            Cell::from(item.routing_table.as_str()),
-            Cell::from(item.comment.as_str()).style(t.muted_text),
-        ])
-        .style(row_style)
+        super::TableRow {
+            cells: vec![
+                Cell::from(item.id.as_str()),
+                Cell::from(flags).style(t.accent.add_modifier(Modifier::BOLD)),
+                Cell::from(item.dst_address.as_str()).style(t.success.add_modifier(Modifier::BOLD)),
+                Cell::from(item.gateway.as_str()).style(t.warning),
+                Cell::from(format!("{}", item.distance)),
+                Cell::from(item.routing_table.as_str()),
+                Cell::from(item.comment.as_str()).style(t.muted_text),
+            ],
+            style: row_style,
+        }
     });
 
     super::render_scrollable_table(
@@ -58,16 +53,8 @@ pub fn render_ip_routes(f: &mut Frame, app: &App, area: Rect) {
         app,
         area,
         "Routing Table - /ip route",
-        header,
+        COLUMNS,
         rows.collect(),
-        vec![
-            Constraint::Length(4),
-            Constraint::Length(6),
-            Constraint::Length(22),
-            Constraint::Length(22),
-            Constraint::Length(10),
-            Constraint::Length(15),
-            Constraint::Min(15),
-        ],
+        t.header_cell,
     );
 }

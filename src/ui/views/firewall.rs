@@ -1,30 +1,23 @@
+use super::{Column, Priority};
 use crate::app::App;
-use ratatui::{
-    layout::{Constraint, Rect},
-    style::Modifier,
-    widgets::{Cell, Row},
-    Frame,
-};
+use ratatui::{layout::Rect, style::Modifier, widgets::Cell, Frame};
+
+const COLUMNS: &[Column] = &[
+    Column::new("ID", 4, Priority::Extra),
+    Column::new("Chain", 10, Priority::Essential),
+    Column::new("Action", 10, Priority::Essential),
+    Column::new("Src. Address", 16, Priority::Useful),
+    Column::new("Dst. Address", 16, Priority::Extra),
+    Column::new("Proto", 8, Priority::Useful),
+    Column::new("Dst. Port", 14, Priority::Extra),
+    Column::new("Bytes", 8, Priority::Extra),
+    Column::new("Packets", 8, Priority::Extra),
+    Column::new("Comment", 15, Priority::Useful),
+];
 
 pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let rules = app.filtered_firewall_rules();
-
-    let header_cells = [
-        "ID",
-        "Chain",
-        "Action",
-        "Src. Address",
-        "Dst. Address",
-        "Proto",
-        "Dst. Port",
-        "Bytes",
-        "Packets",
-        "Comment",
-    ]
-    .iter()
-    .map(|h| Cell::from(*h).style(t.header_cell));
-    let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let selected = app.selection_in(rules.len());
 
@@ -43,19 +36,21 @@ pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
             t.normal_text
         };
 
-        Row::new(vec![
-            Cell::from(item.id.as_str()),
-            Cell::from(item.chain.as_str()).style(t.accent),
-            Cell::from(item.action.as_str()).style(action_style.add_modifier(Modifier::BOLD)),
-            Cell::from(item.src_address.as_str()),
-            Cell::from(item.dst_address.as_str()),
-            Cell::from(item.protocol.as_str()),
-            Cell::from(item.dst_port.as_str()),
-            Cell::from(crate::ui::format::bytes(item.bytes)),
-            Cell::from(crate::ui::format::count(item.packets)),
-            Cell::from(item.comment.as_str()).style(t.muted_text),
-        ])
-        .style(row_style)
+        super::TableRow {
+            cells: vec![
+                Cell::from(item.id.as_str()),
+                Cell::from(item.chain.as_str()).style(t.accent),
+                Cell::from(item.action.as_str()).style(action_style.add_modifier(Modifier::BOLD)),
+                Cell::from(item.src_address.as_str()),
+                Cell::from(item.dst_address.as_str()),
+                Cell::from(item.protocol.as_str()),
+                Cell::from(item.dst_port.as_str()),
+                Cell::from(crate::ui::format::bytes(item.bytes)),
+                Cell::from(crate::ui::format::count(item.packets)),
+                Cell::from(item.comment.as_str()).style(t.muted_text),
+            ],
+            style: row_style,
+        }
     });
 
     super::render_scrollable_table(
@@ -63,19 +58,8 @@ pub fn render_firewall(f: &mut Frame, app: &App, area: Rect) {
         app,
         area,
         "Firewall Filter Rules (Read-Only)",
-        header,
+        COLUMNS,
         rows.collect(),
-        vec![
-            Constraint::Length(4),
-            Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Length(16),
-            Constraint::Length(16),
-            Constraint::Length(8),
-            Constraint::Length(14),
-            Constraint::Length(8),
-            Constraint::Length(8),
-            Constraint::Min(15),
-        ],
+        t.header_cell,
     );
 }

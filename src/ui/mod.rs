@@ -336,6 +336,76 @@ mod tests {
         );
     }
 
+    /// The defect this replaces: at 80 columns every column was squeezed until nothing
+    /// was legible — `forward` became `forwar`, `192.168.88.0/24` became `192.16`.
+    /// Dropping the least useful columns keeps the rest whole.
+    #[test]
+    fn a_narrow_terminal_shows_fewer_columns_but_whole_values() {
+        let mut app = App::with_client(RouterClient::new(SshConfig::default()), true);
+        app.active_tab = Tab::Firewall;
+        app.firewall_rules = vec![crate::models::FirewallRule {
+            id: "0".to_string(),
+            chain: "forward".to_string(),
+            action: "accept".to_string(),
+            src_address: "192.168.88.0/24".to_string(),
+            dst_address: "10.0.0.0/8".to_string(),
+            protocol: "tcp".to_string(),
+            dst_port: "22,443,8291".to_string(),
+            bytes: 194_810_240,
+            packets: 1_490_210,
+            comment: "defconf accept established".to_string(),
+            disabled: false,
+        }];
+
+        let mut terminal = Terminal::new(TestBackend::new(80, 14)).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let screen: String = (0..14u16)
+            .flat_map(|y| (0..80u16).map(move |x| (x, y)))
+            .map(|(x, y)| buffer[(x, y)].symbol())
+            .collect();
+
+        // Whatever survives is complete.
+        for whole in ["forward", "accept", "192.168.88.0/24"] {
+            assert!(screen.contains(whole), "{whole:?} was clipped");
+        }
+
+        // Free text is different: a comment can be any length, so the column shows what
+        // fits and the detail modal has the rest. Clipping prose is honest in a way that
+        // clipping `192.168.88.0/24` to `192.16` is not.
+        assert!(
+            screen.contains("defconf accept"),
+            "the comment should still be readable"
+        );
+
+        // And the user is told the view is partial, with where to see the rest.
+        assert!(
+            screen.contains("cols hidden") && screen.contains("Enter for all"),
+            "hidden columns should be announced"
+        );
+    }
+
+    /// A terminal wide enough hides nothing and says nothing about hiding.
+    #[test]
+    fn a_wide_terminal_announces_no_hidden_columns() {
+        let mut app = app_with_interfaces(3);
+        app.active_tab = Tab::Interfaces;
+
+        let mut terminal = Terminal::new(TestBackend::new(200, 14)).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let screen: String = (0..14u16)
+            .flat_map(|y| (0..200u16).map(move |x| (x, y)))
+            .map(|(x, y)| buffer[(x, y)].symbol())
+            .collect();
+
+        assert!(!screen.contains("cols hidden"), "nothing should be hidden");
+        assert!(
+            screen.contains("MAC Address"),
+            "every column should be present"
+        );
+    }
+
     /// A scrollbar is the only on-screen cue that a list continues past the viewport.
     #[test]
     fn a_scrollbar_appears_only_when_the_list_overflows() {
