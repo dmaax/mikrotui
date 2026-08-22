@@ -1,19 +1,16 @@
+use super::{Column, Priority};
 use crate::app::App;
-use ratatui::{
-    layout::{Constraint, Rect},
-    style::Modifier,
-    widgets::{Cell, Row},
-    Frame,
-};
+use ratatui::{layout::Rect, style::Modifier, widgets::Cell, Frame};
+
+const COLUMNS: &[Column] = &[
+    Column::new("Time", 12, Priority::Useful),
+    Column::new("Topics", 24, Priority::Useful),
+    Column::new("Log Message", 30, Priority::Essential),
+];
 
 pub fn render_logs(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let logs = app.filtered_logs();
-
-    let header_cells = ["Time", "Topics", "Log Message"]
-        .iter()
-        .map(|h| Cell::from(*h).style(t.header_cell));
-    let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let selected = app.selection_in(logs.len());
 
@@ -36,12 +33,14 @@ pub fn render_logs(f: &mut Frame, app: &App, area: Rect) {
             t.normal_text
         };
 
-        Row::new(vec![
-            Cell::from(item.time.as_str()).style(t.muted_text),
-            Cell::from(item.topics.as_str()).style(topic_style.add_modifier(Modifier::BOLD)),
-            Cell::from(item.message.as_str()),
-        ])
-        .style(row_style)
+        super::TableRow {
+            cells: vec![
+                Cell::from(item.time.as_str()).style(t.muted_text),
+                Cell::from(item.topics.as_str()).style(topic_style.add_modifier(Modifier::BOLD)),
+                Cell::from(item.message.as_str()),
+            ],
+            style: row_style,
+        }
     });
 
     super::render_scrollable_table(
@@ -49,12 +48,8 @@ pub fn render_logs(f: &mut Frame, app: &App, area: Rect) {
         app,
         area,
         "System Logs - Live Stream",
-        header,
+        COLUMNS,
         rows.collect(),
-        vec![
-            Constraint::Length(12),
-            Constraint::Length(24),
-            Constraint::Min(30),
-        ],
+        t.header_cell,
     );
 }

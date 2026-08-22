@@ -66,6 +66,12 @@ mikrotui --demo
 mikrotui --refresh 5
 ```
 
+> Tables adapt to the terminal. Each column carries a priority, and a narrow screen drops
+> the least useful ones outright rather than squeezing all of them until nothing is
+> legible — the title says how many are hidden, and `Enter` shows every field of the
+> selected row. Below 100 columns the sidebar also collapses to a rail of tab numbers;
+> `1`–`8` jump straight to a tab.
+
 > MikroTUI fetches only the tab you are looking at, plus the system resource the header
 > shows. Switching to a tab for the first time fetches it then. That keeps a refresh to a
 > couple of SSH commands rather than the two dozen it would take to update all eight

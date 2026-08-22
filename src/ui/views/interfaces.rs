@@ -1,29 +1,22 @@
+use super::{Column, Priority};
 use crate::app::App;
-use ratatui::{
-    layout::{Constraint, Rect},
-    style::Modifier,
-    widgets::{Cell, Row},
-    Frame,
-};
+use ratatui::{layout::Rect, style::Modifier, widgets::Cell, Frame};
+
+const COLUMNS: &[Column] = &[
+    Column::new("ID", 4, Priority::Extra),
+    Column::new("R", 3, Priority::Essential),
+    Column::new("Interface Name", 20, Priority::Essential),
+    Column::new("Type", 12, Priority::Useful),
+    Column::new("MTU", 8, Priority::Extra),
+    Column::new("MAC Address", 20, Priority::Extra),
+    Column::new("Rx Pkts", 8, Priority::Useful),
+    Column::new("Tx Pkts", 8, Priority::Useful),
+    Column::new("Comment", 15, Priority::Useful),
+];
 
 pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
     let interfaces = app.filtered_interfaces();
-
-    let header_cells = [
-        "ID",
-        "R",
-        "Interface Name",
-        "Type",
-        "MTU",
-        "MAC Address",
-        "Rx Pkts",
-        "Tx Pkts",
-        "Comment",
-    ]
-    .iter()
-    .map(|h| Cell::from(*h).style(t.header_cell));
-    let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let selected = app.selection_in(interfaces.len());
 
@@ -39,18 +32,20 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
             t.normal_text
         };
 
-        Row::new(vec![
-            Cell::from(i.id.as_str()),
-            Cell::from(status).style(status_style.add_modifier(Modifier::BOLD)),
-            Cell::from(i.name.as_str()).style(t.accent),
-            Cell::from(i.interface_type.as_str()),
-            Cell::from(i.mtu.as_str()),
-            Cell::from(i.mac_address.as_str()),
-            Cell::from(crate::ui::format::count(i.rx_packet)),
-            Cell::from(crate::ui::format::count(i.tx_packet)),
-            Cell::from(i.comment.as_str()).style(t.muted_text),
-        ])
-        .style(row_style)
+        super::TableRow {
+            cells: vec![
+                Cell::from(i.id.as_str()),
+                Cell::from(status).style(status_style.add_modifier(Modifier::BOLD)),
+                Cell::from(i.name.as_str()).style(t.accent),
+                Cell::from(i.interface_type.as_str()),
+                Cell::from(i.mtu.as_str()),
+                Cell::from(i.mac_address.as_str()),
+                Cell::from(crate::ui::format::count(i.rx_packet)),
+                Cell::from(crate::ui::format::count(i.tx_packet)),
+                Cell::from(i.comment.as_str()).style(t.muted_text),
+            ],
+            style: row_style,
+        }
     });
 
     super::render_scrollable_table(
@@ -58,18 +53,8 @@ pub fn render_interfaces(f: &mut Frame, app: &App, area: Rect) {
         app,
         area,
         "Network Interfaces",
-        header,
+        COLUMNS,
         rows.collect(),
-        vec![
-            Constraint::Length(4),
-            Constraint::Length(3),
-            Constraint::Length(20),
-            Constraint::Length(12),
-            Constraint::Length(8),
-            Constraint::Length(20),
-            Constraint::Length(8),
-            Constraint::Length(8),
-            Constraint::Min(15),
-        ],
+        t.header_cell,
     );
 }
