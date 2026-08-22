@@ -19,9 +19,9 @@ pub fn render(f: &mut Frame, app: &App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Header
-            Constraint::Min(10),   // Content (Sidebar + Active View)
-            Constraint::Length(3), // Statusbar
+            Constraint::Length(header::HEIGHT),
+            Constraint::Min(5), // Content (sidebar + active view)
+            Constraint::Length(statusbar::HEIGHT),
         ])
         .split(f.area());
 
@@ -32,8 +32,10 @@ pub fn render(f: &mut Frame, app: &App) {
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(25), // Sidebar width
-            Constraint::Min(40),    // Main view width
+            // The sidebar collapses to a numbered rail on a narrow terminal; see
+            // `sidebar::width_for`.
+            Constraint::Length(sidebar::width_for(f.area().width)),
+            Constraint::Min(20),
         ])
         .split(main_chunks[1]);
 
@@ -212,6 +214,125 @@ mod tests {
         assert!(
             !screen.contains("194810240"),
             "the raw value should not be what the column tries to fit"
+        );
+    }
+
+    /// Chrome was three rows of header plus three of status bar — a quarter of a 24-row
+    /// terminal — to show two lines of text.
+    #[test]
+    fn chrome_costs_two_rows_not_six() {
+        assert_eq!(header::HEIGHT, 1);
+        assert_eq!(statusbar::HEIGHT, 1);
+
+        let app = app_with_interfaces(60);
+        let backend = TestBackend::new(120, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+
+        // Header on row 0, table border on row 1, so the table starts immediately.
+        let buffer = terminal.backend().buffer();
+        let row1: String = (0..120u16).map(|x| buffer[(x, 1u16)].symbol()).collect();
+        assert!(
+            row1.contains("Network Interfaces"),
+            "the table should start on row 1, got: {}",
+            row1.trim()
+        );
+    }
+
+    /// 25 columns of static labels is nearly a third of an 80-column screen.
+    #[test]
+    fn the_sidebar_collapses_on_a_narrow_terminal() {
+        assert_eq!(sidebar::width_for(80), sidebar::RAIL_WIDTH);
+        assert_eq!(sidebar::width_for(99), sidebar::RAIL_WIDTH);
+        assert_eq!(sidebar::width_for(100), sidebar::FULL_WIDTH);
+        assert_eq!(sidebar::width_for(200), sidebar::FULL_WIDTH);
+
+        let app = app_with_interfaces(3);
+
+        let narrow = {
+            let mut t = Terminal::new(TestBackend::new(80, 20)).unwrap();
+            t.draw(|f| render(f, &app)).unwrap();
+            let b = t.backend().buffer();
+            (0..20u16)
+                .flat_map(|y| (0..80u16).map(move |x| (x, y)))
+                .map(|(x, y)| b[(x, y)].symbol())
+                .collect::<String>()
+        };
+        assert!(
+            !narrow.contains("System Resources"),
+            "the labelled sidebar should be gone at 80 columns"
+        );
+
+        let wide = {
+            let mut t = Terminal::new(TestBackend::new(120, 20)).unwrap();
+            t.draw(|f| render(f, &app)).unwrap();
+            let b = t.backend().buffer();
+            (0..20u16)
+                .flat_map(|y| (0..120u16).map(move |x| (x, y)))
+                .map(|(x, y)| b[(x, y)].symbol())
+                .collect::<String>()
+        };
+        assert!(
+            wide.contains("System Resources"),
+            "the labelled sidebar should be back at 120 columns"
+        );
+    }
+
+    /// The security badges are the reason to look at the header, so they must not be the
+    /// first thing a narrow terminal drops.
+    #[test]
+    fn the_read_only_badge_survives_a_narrow_terminal() {
+        let app = app_with_interfaces(3);
+        for width in [80u16, 100, 120, 200] {
+            let mut t = Terminal::new(TestBackend::new(width, 20)).unwrap();
+            t.draw(|f| render(f, &app)).unwrap();
+            let b = t.backend().buffer();
+            let row0: String = (0..width).map(|x| b[(x, 0u16)].symbol()).collect();
+            assert!(
+                row0.contains("READ-ONLY"),
+                "badge missing at {width} columns: {}",
+                row0.trim()
+            );
+        }
+    }
+
+    /// Sidebar labels must line up. Measuring icon width in `char`s cannot show this —
+    /// `⚙ ` is two chars and one column wide, `🔌` is one char and two columns — so the
+    /// check is on where the labels actually land. `📡 ` carried an extra space and
+    /// pushed its row one column right.
+    #[test]
+    fn the_sidebar_labels_line_up() {
+        let app = app_with_interfaces(3);
+        let mut terminal = Terminal::new(TestBackend::new(120, 20)).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+        let buffer = terminal.backend().buffer();
+
+        let starts: Vec<u16> = crate::app::Tab::ALL
+            .iter()
+            .enumerate()
+            .map(|(i, tab)| {
+                let y = (i + 2) as u16; // row 0 is the header, row 1 the block border
+                let first_word = tab.title().split_whitespace().next().unwrap();
+                let first_char = first_word.chars().next().unwrap().to_string();
+
+                // Column, not char index: a wide emoji occupies one cell and leaves the
+                // next holding an empty string, so concatenating symbols and calling
+                // `find` measures neither one reliably.
+                (0..sidebar::FULL_WIDTH)
+                    .find(|x| {
+                        buffer[(*x, y)].symbol() == first_char
+                            && (1..first_word.len() as u16).all(|k| {
+                                buffer[(x + k, y)].symbol()
+                                    == first_word.chars().nth(k as usize).unwrap().to_string()
+                            })
+                    })
+                    .unwrap_or_else(|| panic!("{} not found on row {y}", tab.title()))
+            })
+            .collect();
+
+        assert!(
+            starts.windows(2).all(|w| w[0] == w[1]),
+            "labels start at different columns: {starts:?}"
         );
     }
 

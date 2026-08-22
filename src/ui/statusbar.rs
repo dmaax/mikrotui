@@ -1,8 +1,8 @@
 use crate::app::{App, InputMode};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
     Frame,
 };
 
@@ -32,6 +32,9 @@ enum HotkeyTone {
     Danger,
 }
 
+/// One row, no border. See [`crate::ui::header::HEIGHT`].
+pub const HEIGHT: u16 = 1;
+
 pub fn render_statusbar(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.theme;
 
@@ -45,8 +48,7 @@ pub fn render_statusbar(f: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Min(20), Constraint::Length(filter_width)])
         .split(area);
 
-    // Room inside the block, minus its two borders.
-    let available = chunks[0].width.saturating_sub(2) as usize;
+    let available = chunks[0].width as usize;
 
     // The message goes first and is never dropped. It is the only place errors surface —
     // a rejected host key, a refresh that gave up — and it used to be appended after ten
@@ -74,12 +76,7 @@ pub fn render_statusbar(f: &mut Frame, app: &App, area: Rect) {
         ));
     }
 
-    let status_p = Paragraph::new(Line::from(spans)).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border),
-    );
-    f.render_widget(status_p, chunks[0]);
+    f.render_widget(Paragraph::new(Line::from(spans)), chunks[0]);
 
     // Right filter bar
     let (filter_text, filter_style) = match app.input_mode {
@@ -93,11 +90,9 @@ pub fn render_statusbar(f: &mut Frame, app: &App, area: Rect) {
         }
     };
 
-    let filter_p = Paragraph::new(Line::from(Span::styled(filter_text, filter_style))).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(t.border)
-            .title("Filter"),
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(filter_text, filter_style)))
+            .alignment(Alignment::Right),
+        chunks[1],
     );
-    f.render_widget(filter_p, chunks[1]);
 }

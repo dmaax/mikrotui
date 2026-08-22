@@ -732,6 +732,14 @@ async fn run_app(
                         (KeyCode::PageUp, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) => {
                             app.page_up()
                         }
+                        // Jump straight to a tab. With the sidebar collapsed to numbers
+                        // on a narrow terminal, this is what those numbers are for.
+                        (KeyCode::Char(c), _) if c.is_ascii_digit() && c != '0' => {
+                            if let Some(tab) = app::Tab::from_number(c as usize - '0' as usize) {
+                                app.go_to_tab(tab);
+                            }
+                        }
+
                         (KeyCode::Home, _) | (KeyCode::Char('g'), _) => app.select_first(),
                         (KeyCode::End, _) | (KeyCode::Char('G'), _) => app.select_last(),
 

@@ -104,6 +104,7 @@ mikrotui exec "/ip address print"
 | Shortcut | Action |
 | :--- | :--- |
 | **Tab / Shift+Tab** | Switch active menu tab (or use `←` / `→` Arrow keys / `h` / `l`) |
+| **1** – **8** | Jump straight to a tab, by the number shown beside it |
 | **↑ / ↓** (or `k` / `j`) | Navigate up / down through table rows |
 | **PgUp / PgDn** | Scroll a whole screenful (also `Ctrl+B` / `Ctrl+F`) |
 | **Home / End** (or `g` / `G`) | Jump to the first / last row |
