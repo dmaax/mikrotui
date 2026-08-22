@@ -45,17 +45,24 @@ impl Tab {
         }
     }
 
+    /// The bare glyph. Padding to a fixed width is the renderer's job, since how many
+    /// columns it occupies is a property of the glyph, not of this list.
     pub fn icon(&self) -> &'static str {
         match self {
-            Tab::System => "⚙ ",
+            Tab::System => "⚙",
             Tab::Interfaces => "🔌",
             Tab::IpAddresses => "🌐",
             Tab::IpRoutes => "🔀",
             Tab::DhcpLeases => "💻",
-            Tab::Firewall => "🛡 ",
-            Tab::Neighbors => "📡 ",
+            Tab::Firewall => "🛡",
+            Tab::Neighbors => "📡",
             Tab::Logs => "📜",
         }
+    }
+
+    /// The tab selected by the number keys, counting from 1.
+    pub fn from_number(n: usize) -> Option<Tab> {
+        n.checked_sub(1).and_then(|i| Tab::ALL.get(i)).copied()
     }
 }
 
@@ -626,6 +633,14 @@ impl App {
         self.reset_scroll();
     }
 
+    /// Switch directly to `tab`, as the number keys do.
+    pub fn go_to_tab(&mut self, tab: Tab) {
+        if tab != self.active_tab {
+            self.active_tab = tab;
+            self.reset_scroll();
+        }
+    }
+
     /// Return to the top of the list. Each tab holds a different number of rows, so a
     /// scroll offset carried across a tab switch would point at nothing.
     pub fn reset_scroll(&mut self) {
@@ -1182,6 +1197,25 @@ mod tests {
         app.is_loading = false; // as the completing event would
 
         assert!(!app.active_tab_needs_data());
+    }
+
+    /// Every tab is reachable by number, which is what the collapsed sidebar shows.
+    #[test]
+    fn the_number_keys_map_onto_the_tabs() {
+        assert_eq!(Tab::from_number(1), Some(Tab::System));
+        assert_eq!(Tab::from_number(8), Some(Tab::Logs));
+        assert_eq!(Tab::from_number(0), None);
+        assert_eq!(Tab::from_number(9), None);
+
+        for (i, expected) in Tab::ALL.iter().enumerate() {
+            assert_eq!(Tab::from_number(i + 1), Some(*expected));
+        }
+
+        let mut app = app();
+        app.selected_index = 7;
+        app.go_to_tab(Tab::Firewall);
+        assert_eq!(app.active_tab, Tab::Firewall);
+        assert_eq!(app.selected_index, 0, "a new tab starts at the top");
     }
 
     /// `is_loading` gates every refresh, so a failure has to clear it or reloading is
