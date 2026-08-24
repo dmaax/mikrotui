@@ -1,7 +1,7 @@
 use crate::config::{AppConfig, HostConfig};
 use crate::models::*;
 use crate::ssh::{RouterClient, SshConfig};
-use crate::ui::theme::Theme;
+use crate::ui::theme::{self, Theme};
 use anyhow::Result;
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -139,6 +139,43 @@ pub enum AppEvent {
     },
 }
 
+/// The theme picker: a filterable list, since 239 themes cannot be cycled through.
+pub struct ThemePicker {
+    pub entries: Vec<crate::ui::theme::Entry>,
+    pub query: String,
+    pub selected: usize,
+    /// First row drawn, carried between frames like the tables' offset.
+    pub offset: std::cell::Cell<usize>,
+    /// What to go back to if the user presses Esc.
+    pub original: crate::ui::theme::ThemeId,
+}
+
+impl ThemePicker {
+    /// Entries matching the query, by substring on name, slug or author.
+    pub fn matches(&self) -> Vec<&crate::ui::theme::Entry> {
+        if self.query.is_empty() {
+            return self.entries.iter().collect();
+        }
+        let q = self.query.to_lowercase();
+        self.entries
+            .iter()
+            .filter(|e| {
+                e.name.to_lowercase().contains(&q)
+                    || e.id.slug().to_lowercase().contains(&q)
+                    || e.author.to_lowercase().contains(&q)
+            })
+            .collect()
+    }
+
+    /// The highlighted entry, clamped the same way table selection is.
+    pub fn current(&self) -> Option<crate::ui::theme::ThemeId> {
+        let matches = self.matches();
+        matches
+            .get(self.selected.min(matches.len().saturating_sub(1)))
+            .map(|e| e.id.clone())
+    }
+}
+
 pub struct App {
     pub active_tab: Tab,
     pub selected_index: usize,
@@ -168,6 +205,8 @@ pub struct App {
     pub show_detail_modal: bool,
     pub show_help_modal: bool,
     pub show_host_switch_modal: bool,
+    /// Open when the user pressed `t`.
+    pub theme_picker: Option<ThemePicker>,
     pub host_switch_selected: usize,
     pub available_hosts: Vec<HostConfig>,
     pub ping_state: PingState,
@@ -204,10 +243,11 @@ impl App {
             input_mode: InputMode::Normal,
             filter_query: String::new(),
             client,
-            theme: Theme::winbox_dark(),
+            theme: theme::load(&crate::config::saved_theme()),
             show_detail_modal: false,
             show_help_modal: false,
             show_host_switch_modal: false,
+            theme_picker: None,
             host_switch_selected: 0,
             available_hosts: Vec::new(),
             ping_state: PingState::Inactive,
@@ -562,18 +602,85 @@ impl App {
         self.show_help_modal = !self.show_help_modal;
     }
 
-    pub fn cycle_theme(&mut self) {
-        let next_kind = self.theme.kind.next();
-        self.theme = Theme::from_kind(next_kind);
-        self.status_message = format!("Theme changed to: {}", next_kind.name());
+    /// Open the theme picker.
+    ///
+    /// This replaced cycling. With one built-in theme and 238 bundled base16 schemes,
+    /// stepping through them one keypress at a time is not a way to find anything.
+    pub fn open_theme_picker(&mut self) {
+        let entries = crate::ui::theme::catalogue();
+        let selected = entries
+            .iter()
+            .position(|e| e.id == self.theme.id)
+            .unwrap_or(0);
+
+        self.theme_picker = Some(ThemePicker {
+            entries,
+            query: String::new(),
+            selected,
+            offset: std::cell::Cell::new(0),
+            original: self.theme.id.clone(),
+        });
     }
 
-    /// Fetch what the first frame needs, and nothing else.
+    /// Apply whatever the picker is currently highlighting.
     ///
-    /// This runs after raw mode is entered and before the first draw, so every command it
-    /// issues is time the user spends looking at a blank alternate screen. It used to
-    /// fetch all eight resources — with per-command timeouts and retries, minutes in the
-    /// worst case, with no event loop yet running to accept Ctrl+C.
+    /// Called on every movement so the choice is previewed against real data rather than
+    /// a swatch — the point of a theme is how the tables look under it.
+    pub fn preview_highlighted_theme(&mut self) {
+        if let Some(id) = self.theme_picker.as_ref().and_then(|p| p.current()) {
+            if id != self.theme.id {
+                self.theme = crate::ui::theme::load(&id);
+            }
+        }
+    }
+
+    pub fn theme_picker_move(&mut self, delta: isize) {
+        let Some(picker) = self.theme_picker.as_mut() else {
+            return;
+        };
+        let len = picker.matches().len();
+        if len == 0 {
+            return;
+        }
+        let last = len - 1;
+        picker.selected = match delta {
+            d if d < 0 => picker.selected.saturating_sub(d.unsigned_abs()),
+            d => (picker.selected + d as usize).min(last),
+        };
+        self.preview_highlighted_theme();
+    }
+
+    pub fn theme_picker_edit_query(&mut self, edit: impl FnOnce(&mut String)) {
+        let Some(picker) = self.theme_picker.as_mut() else {
+            return;
+        };
+        edit(&mut picker.query);
+        // The list just changed under the cursor.
+        picker.selected = 0;
+        picker.offset.set(0);
+        self.preview_highlighted_theme();
+    }
+
+    /// Keep the highlighted theme and close.
+    pub fn confirm_theme(&mut self) {
+        if let Some(picker) = self.theme_picker.take() {
+            let chosen = self.theme.id.clone();
+            self.status_message = format!("Theme: {}", self.theme.name);
+            let _ = picker;
+            // Remember it, so the choice survives a restart.
+            if let Err(e) = crate::config::save_theme(&chosen) {
+                self.status_message = format!("Theme: {} (not saved: {e})", self.theme.name);
+            }
+        }
+    }
+
+    /// Close without keeping the preview.
+    pub fn cancel_theme(&mut self) {
+        if let Some(picker) = self.theme_picker.take() {
+            self.theme = crate::ui::theme::load(&picker.original);
+        }
+    }
+
     pub async fn load_initial_data(&mut self) -> Result<()> {
         self.is_loading = true;
 

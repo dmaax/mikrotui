@@ -620,7 +620,32 @@ async fn run_app(
                     continue;
                 }
 
-                // 2. Help Modal Handler (?)
+                // 2. Theme picker (t). Typing filters, so it has to claim every key
+                // before the normal-mode bindings see them.
+                if app.theme_picker.is_some() {
+                    match (key.code, key.modifiers) {
+                        (KeyCode::Esc, _) => app.cancel_theme(),
+                        (KeyCode::Enter, _) => app.confirm_theme(),
+                        (KeyCode::Up, _) => app.theme_picker_move(-1),
+                        (KeyCode::Down, _) => app.theme_picker_move(1),
+                        (KeyCode::PageUp, _) => app.theme_picker_move(-10),
+                        (KeyCode::PageDown, _) => app.theme_picker_move(10),
+                        (KeyCode::Home, _) => app.theme_picker_move(isize::MIN / 2),
+                        (KeyCode::End, _) => app.theme_picker_move(isize::MAX / 2),
+                        (KeyCode::Backspace, _) => {
+                            app.theme_picker_edit_query(|q| {
+                                q.pop();
+                            });
+                        }
+                        (KeyCode::Char(c), m) if !m.contains(KeyModifiers::CONTROL) => {
+                            app.theme_picker_edit_query(|q| q.push(c));
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                // 3. Help Modal Handler (?)
                 if app.show_help_modal {
                     match key.code {
                         KeyCode::Enter | KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
@@ -708,9 +733,9 @@ async fn run_app(
                             app.open_ping_prompt();
                         }
 
-                        // Cycle Theme (t)
+                        // Theme picker (t)
                         (KeyCode::Char('t'), _) => {
-                            app.cycle_theme();
+                            app.open_theme_picker();
                         }
 
                         // Navigation between Tabs
