@@ -86,7 +86,26 @@ impl HostConfig {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AppConfig {
     pub default_host: Option<String>,
+    /// Slug of the theme to start with. Absent means the built-in default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
     pub hosts: Vec<HostConfig>,
+}
+
+/// The theme to start with, or the default if none was chosen or the file is unreadable.
+pub fn saved_theme() -> crate::ui::theme::ThemeId {
+    AppConfig::load()
+        .ok()
+        .and_then(|c| c.theme)
+        .map(|slug| crate::ui::theme::ThemeId::from_slug(&slug))
+        .unwrap_or(crate::ui::theme::ThemeId::WinBoxDark)
+}
+
+/// Remember the chosen theme, leaving the rest of the config untouched.
+pub fn save_theme(id: &crate::ui::theme::ThemeId) -> Result<()> {
+    let mut config = AppConfig::load().unwrap_or_default();
+    config.theme = Some(id.slug().to_string());
+    config.save()
 }
 
 impl AppConfig {

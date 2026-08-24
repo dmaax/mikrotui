@@ -58,7 +58,7 @@ pub fn render_help_modal(f: &mut Frame, app: &App) {
         ),
         (
             "t",
-            "Cycle color themes (WinBox Dark, Nord Slate, High Contrast)",
+            "Open the theme picker — type to search, arrows preview, Enter keeps",
         ),
         ("Ctrl+O", "Switch to another stored router host"),
         (

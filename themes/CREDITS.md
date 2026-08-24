@@ -1,0 +1,246 @@
+# Theme credits
+
+The colour schemes bundled with MikroTUI come from
+[tinted-theming/schemes](https://github.com/tinted-theming/schemes), MIT licensed.
+Only the dark variants are included, reproduced verbatim.
+
+238 schemes, by the following authors:
+
+- **0x96f** — Filip Janevski (https://0x96f.dev/theme)
+- **3024** — Jan T. Sott (http://github.com/idleberg)
+- **Apathy** — Jannik Siebert (https://github.com/janniks)
+- **Apprentice** — romainl
+- **Arroz con Dulce Dark** — Richard Martinez
+- **Ascendancy** — EmergentMind (https://github.com/emergentmind/ascendancy-scheme)
+- **Ashes** — Jannik Siebert (https://github.com/janniks)
+- **Atelier Cave** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Dune** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Estuary** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Forest** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Heath** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Lakeside** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Plateau** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Savanna** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Seaside** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atelier Sulphurpool** — Bram de Haan (http://atelierbramdehaan.nl)
+- **Atlas** — Alex Lende (https://ajlende.com)
+- **Ayu Dark** — Tinted Theming (https://github.com/tinted-theming), Ayu Theme (https://github.com/ayu-theme)
+- **Ayu Mirage** — Tinted Theming (https://github.com/tinted-theming), Ayu Theme (https://github.com/ayu-theme)
+- **Aztec** — TheNeverMan (github.com/TheNeverMan)
+- **Bespin** — Jan T. Sott
+- **Black Metal** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Bathory)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Burzum)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Dark Funeral)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Gorgoroth)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Immortal)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Khold)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Marduk)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Mayhem)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Nile)** — metalelf0 (https://github.com/metalelf0)
+- **Black Metal (Venom)** — metalelf0 (https://github.com/metalelf0)
+- **Blue Forest** — alonsodomin (https://github.com/alonsodomin)
+- **Blueish** — Ben Mayoras
+- **Bosque** — Teshre
+- **Brasa** — Teshre
+- **Brewer** — Timothée Poisot (http://github.com/tpoisot)
+- **Bright** — Chris Kempson (http://chriskempson.com)
+- **Brogrammer** — Vik Ramanujam (http://github.com/piggyslasher)
+- **Brush Trees Dark** — Abraham White <abelincoln.white@gmail.com>
+- **Cacao** — Teshre
+- **Catppuccin Frappe** — https://github.com/catppuccin/catppuccin
+- **Catppuccin Macchiato** — https://github.com/catppuccin/catppuccin
+- **Catppuccin Mocha** — https://github.com/catppuccin/catppuccin
+- **Cerulean Signal Dark** — Aaron Colichia (https://aaron.colichia.org/)
+- **Chalk** — Chris Kempson (http://chriskempson.com)
+- **Charcoal Dark** — Mubin Muhammad (https://github.com/mubin6th)
+- **Chicago Night** — Wendell, Ryan <ryanjwendell@gmail.com>
+- **Chinoiserie Midnight** — Di Wang (https://cs.cmu.edu/~diw3)
+- **Chinoiserie Morandi** — Di Wang (https://cs.cmu.edu/~diw3)
+- **Chinoiserie Night** — Di Wang (https://cs.cmu.edu/~diw3)
+- **Circus** — Stephan Boyer (https://github.com/stepchowfun) and Esther Wang (https://github.com/ewang12)
+- **Classic Dark** — Jason Heeris (http://heeris.id.au)
+- **Codeschool** — blockloop
+- **Colors** — mrmrs (http://clrs.cc)
+- **Da One Black** — NNB (https://github.com/NNBnh)
+- **Da One Gray** — NNB (https://github.com/NNBnh)
+- **Da One Ocean** — NNB (https://github.com/NNBnh)
+- **Da One Sea** — NNB (https://github.com/NNBnh)
+- **DanQing** — Wenhan Zhu (Cosmos) (zhuwenhan950913@gmail.com)
+- **Darcula** — jetbrains
+- **Dark Violet** — ruler501 (https://github.com/ruler501/base16-darkviolet)
+- **Darktooth** — Jason Milkins (https://github.com/jasonm23)
+- **Decaf** — Alex Mirrington (https://github.com/alexmirrington)
+- **Deep Oceanic Next** — spearkkk (https://github.com/spearkkk)
+- **Default Dark** — Chris Kempson (http://chriskempson.com)
+- **Digital Rain** — Nathan Byrd (https://github.com/cognitivegears)
+- **Dracula** — clach04 (https://github.com/clach04)
+- **Edge Dark** — cjayross (https://github.com/cjayross), Tinted Theming (https://github.com/tinted-theming)
+- **Eighties** — Chris Kempson (http://chriskempson.com)
+- **Eldritch** — https://github.com/eldritch-theme
+- **Embers** — Jannik Siebert (https://github.com/janniks)
+- **Equilibrium Dark** — Carlo Abelli
+- **Equilibrium Gray Dark** — Carlo Abelli
+- **Espresso** — Unknown. Maintained by Alex Mirrington (https://github.com/alexmirrington)
+- **Eva** — kjakapat (https://github.com/kjakapat)
+- **Eva Dim** — kjakapat (https://github.com/kjakapat)
+- **Evenok Dark** — Mekeor Melire
+- **Everforest** — Sainnhe Park (https://github.com/sainnhe)
+- **Everforest Dark Hard** — Sainnhe Park (https://github.com/sainnhe)
+- **Everforest Dark Medium** — Sainnhe Park (https://github.com/sainnhe)
+- **Everforest Dark Soft** — Sainnhe Park (https://github.com/sainnhe)
+- **Flat** — Chris Kempson (http://chriskempson.com)
+- **Flexoki Dark** — Steph Ango (https://github.com/kepano/flexoki)
+- **Framer** — Framer (Maintained by Jesse Hoyos)
+- **Gigavolt** — Aidan Swope (http://github.com/Whillikers)
+- **Github Dark** — Tinted Theming (https://github.com/tinted-theming)
+- **Github Dark Colorblind** — Tinted Theming (https://github.com/tinted-theming)
+- **Github Dark Dimmed** — Tinted Theming (https://github.com/tinted-theming)
+- **Github Dark High Contrast** — Tinted Theming (https://github.com/tinted-theming)
+- **Google Dark** — Seth Wright (http://sethawright.com)
+- **Gotham** — Andrea Leopardi (arranged by Brett Jones)
+- **Grayscale Dark** — Alexandre Gavioli (https://github.com/Alexx2/)
+- **Green Screen** — Chris Kempson (http://chriskempson.com)
+- **Gruber** — Patel, Nimai <nimai.m.patel@gmail.com>, colors from www.github.com/rexim/gruber-darker-theme
+- **Gruvbox Dark Medium (Forest)** — Muhammad Talha (muhammadtalha.quant@gmail.com), morhetz (https://github.com/morhetz/gruvbox)
+- **Gruvbox Material Dark, Hard** — Mayush Kumar (https://github.com/MayushKumar), sainnhe (https://github.com/sainnhe/gruvbox-material-vscode)
+- **Gruvbox Material Dark, Medium** — Mayush Kumar (https://github.com/MayushKumar), sainnhe (https://github.com/sainnhe/gruvbox-material-vscode)
+- **Gruvbox Material Dark, Soft** — Mayush Kumar (https://github.com/MayushKumar), sainnhe (https://github.com/sainnhe/gruvbox-material-vscode)
+- **Gruvbox dark** — Tinted Theming (https://github.com/tinted-theming), morhetz (https://github.com/morhetz/gruvbox)
+- **Gruvbox dark, hard** — Dawid Kurek (dawikur@gmail.com), morhetz (https://github.com/morhetz/gruvbox)
+- **Gruvbox dark, medium** — Dawid Kurek (dawikur@gmail.com), morhetz (https://github.com/morhetz/gruvbox)
+- **Gruvbox dark, pale** — Dawid Kurek (dawikur@gmail.com), morhetz (https://github.com/morhetz/gruvbox)
+- **Gruvbox dark, soft** — Dawid Kurek (dawikur@gmail.com), morhetz (https://github.com/morhetz/gruvbox)
+- **Hardcore** — Chris Caller
+- **Hardhacker** — fe2-Nyxar, based on the https://github.com/hardhackerlabs
+- **Harmonic16 Dark** — Jannik Siebert (https://github.com/janniks)
+- **Heetch Dark** — Geoffrey Teale (tealeg@gmail.com)
+- **Helios** — Alex Meyer (https://github.com/reyemxela)
+- **Hopscotch** — Jan T. Sott
+- **Horizon Dark** — Michaël Ball (http://github.com/michael-ball/)
+- **Horizon Terminal Dark** — Michaël Ball (http://github.com/michael-ball/)
+- **Humanoid dark** — Thomas (tasmo) Friese
+- **IR Black** — Timothée Poisot (http://timotheepoisot.fr)
+- **Icy Dark** — icyphox (https://icyphox.ga)
+- **Isotope** — Jan T. Sott
+- **Jabuti** — https://github.com/notusknot
+- **Jellybeans** — FredHappyface (https://github.com/fredHappyface), converted to Base16 by https://github.com/nonetrix
+- **Kanagawa** — Tommaso Laurenzi (https://github.com/rebelot)
+- **Kanagawa Dragon** — Stefan Weigl-Bosker (https://github.com/sweiglbosker), Tommaso Laurenzi (https://github.com/rebelot/kanagawa.nvim)
+- **Katy** — George Essig (https://github.com/gessig)
+- **Kimber** — Mishka Nguyen (https://github.com/akhsiM)
+- **Kissa Macchiato** — rwendell (https://github.com/rwendell/kissa)
+- **Lichen Chartreuse Dark** — Aaron Colichia (https://aaron.colichia.org/)
+- **Linux VT** — j-c-m (https://github.com/j-c-m/)
+- **London Tube** — Jan T. Sott
+- **Macintosh** — Rebecca Bettencourt (http://www.kreativekorp.com)
+- **Marrakesh** — Alexandre Gavioli (http://github.com/Alexx2/)
+- **Materia** — Defman21
+- **Material** — Nate Peterson
+- **Material Darker** — Nate Peterson
+- **Material Palenight** — Nate Peterson
+- **Material Vivid** — joshyrobot
+- **Measured Dark** — Measured (https://measured.co)
+- **Mellow Purple** — gidsi
+- **Mezcal** — Teshre
+- **Mocha** — Chris Kempson (http://chriskempson.com)
+- **Monokai** — Wimer Hazenberg (http://www.monokai.nl)
+- **Moonlight** — Jeremy Swinarton (https://github.com/jswinarton)
+- **Mountain** — gnsfujiwara (https://github.com/gnsfujiwara)
+- **Nebula** — Gabriel Fontes (https://github.com/Misterio77)
+- **Neovim Dark** — https://github.com/neovim/neovim/blob/master/src/nvim/highlight_group.c
+- **Noche** — Teshre
+- **Nord** — arcticicestudio
+- **Nova** — George Essig (https://github.com/gessig), Trevor D. Miller (https://trevordmiller.com)
+- **Ocean** — Chris Kempson (http://chriskempson.com)
+- **OceanicNext** — https://github.com/voronianski/oceanic-next-color-scheme
+- **Ocote** — Teshre
+- **OneDark** — Lalit Magant (http://github.com/tilal6991)
+- **OneDark Dark** — olimorris (https://github.com/olimorris)
+- **Outrun Dark** — Hugo Delahousse (http://github.com/hugodelahousse/)
+- **Oxocarbon Dark** — shaunsingh/IBM, Tinted Theming (https://github.com/tinted-theming)
+- **PaperColor Dark** — Jon Leopard (http://github.com/jonleopard), Tinted Theming (https://github.com/tinted-theming), based on PaperColor Theme (https://github.com/NLKNguyen/papercolor-theme)
+- **Paraiso** — Jan T. Sott
+- **Pasque** — Gabriel Fontes (https://github.com/Misterio77)
+- **Pastelón de Amarillos Dark** — Richard Martinez (https://sonofmartinus.com)
+- **Penumbra Dark** — Zachary Weiss (https://github.com/zacharyweiss)
+- **Penumbra Dark Contrast Plus** — Zachary Weiss (https://github.com/zacharyweiss)
+- **Penumbra Dark Contrast Plus Plus** — Zachary Weiss (https://github.com/zacharyweiss)
+- **PhD** — Hennig Hasemann (http://leetless.de/vim.html)
+- **Pico** — PICO-8 (http://www.lexaloffle.com/pico-8.php)
+- **Pop** — Chris Kempson (http://chriskempson.com)
+- **Porple** — Niek den Breeje (https://github.com/AuditeMarlow)
+- **Precious Dark Eleven** — 4lex4 <4lex49@zoho.com>
+- **Precious Dark Fifteen** — 4lex4 <4lex49@zoho.com>
+- **Primer Dark** — Jimmy Lin
+- **Primer Dark Dimmed** — Jimmy Lin
+- **Purpledream** — malet
+- **Qualia** — isaacwhanson
+- **Railscasts** — Ryan Bates (http://railscasts.com)
+- **Rebecca** — Victor Borja (http://github.com/vic) based on Rebecca Theme (http://github.com/vic/rebecca-theme)
+- **Rosé Pine** — Emilia Dunfelt <edun@dunfelt.se>
+- **Rosé Pine Moon** — Emilia Dunfelt <edun@dunfelt.se>
+- **SAGA** — https://github.com/SAGAtheme/SAGA
+- **Sandcastle** — George Essig (https://github.com/gessig)
+- **Seti UI** — unknown
+- **ShadeSmear Dark** — Kyle Giammarco (http://kyle.giammar.co)
+- **Shades of Purple** — Iolar Demartini Junior (http://github.com/demartini), based on Shades of Purple Theme (https://github.com/ahmadawais/shades-of-purple-vscode)
+- **Silk Dark** — Gabriel Fontes (https://github.com/Misterio77)
+- **Snazzy** — Chawye Hsu (https://github.com/chawyehsu), based on Hyper Snazzy Theme (https://github.com/sindresorhus/hyper-snazzy)
+- **Soft Server** — FredHappyface (https://github.com/fredHappyface)
+- **Solar Flare** — Chuck Harmston (https://chuck.harmston.ch)
+- **Solarized Dark** — Ethan Schoonover (modified by aramisgithub)
+- **Spaceduck** — Guillermo Rodriguez (https://github.com/pineapplegiant), packaged by Gabriel Fontes (https://github.com/Misterio77)
+- **Spacemacs** — Nasser Alshammari (https://github.com/nashamri/spacemacs-theme)
+- **Sparky** — Leila Sother (https://github.com/mixcoac)
+- **Stella** — Shrimpram
+- **Summerfruit Dark** — Christopher Corley (http://christop.club/)
+- **Swamp Dark** — Masroof Maindak (https://github.com/masroof-maindak)
+- **Synth Midnight Terminal Dark** — Michaël Ball (http://github.com/michael-ball/)
+- **Tango** — @Schnouki, based on the Tango Desktop Project
+- **Terracotta Dark** — Alexander Rossell Hayes (https://github.com/rossellhayes)
+- **Tinta** — Teshre
+- **Tokyo City Dark** — Michaël Ball
+- **Tokyo City Terminal Dark** — Michaël Ball
+- **Tokyo Night Dark** — Michaël Ball
+- **Tokyo Night Moon** — Ólafur Bjarki Bogason
+- **Tokyo Night Storm** — Michaël Ball
+- **Tokyo Night Terminal Dark** — Michaël Ball
+- **Tokyo Night Terminal Storm** — Michaël Ball
+- **Tokyodark** — Jamy Golden (https://github.com/JamyGolden), Based on Tokyodark.nvim (https://github.com/tiagovla/tokyodark.nvim)
+- **Tokyodark Terminal** — Tiagovla (https://github.com/tiagovla/)
+- **Tomorrow Night** — Chris Kempson (http://chriskempson.com)
+- **Tomorrow Night Eighties** — Chris Kempson (http://chriskempson.com)
+- **Twilight** — David Hart (https://github.com/hartbit)
+- **Unikitty Dark** — Josh W Lewis (@joshwlewis)
+- **Unikitty Reversible** — Josh W Lewis (@joshwlewis)
+- **UwUnicorn** — Fernando Marques (https://github.com/RakkiUwU) and Gabriel Fontes (https://github.com/Misterio77)
+- **Valua** — Nonetrix (https://github.com/nonetrix)
+- **Vesper** — FormalSnake (https://github.com/formalsnake)
+- **Windows 10** — Fergus Collins (https://github.com/ferguscollins)
+- **Windows 95** — Fergus Collins (https://github.com/ferguscollins)
+- **Windows High Contrast** — Fergus Collins (https://github.com/ferguscollins)
+- **Windows NT** — Fergus Collins (https://github.com/ferguscollins)
+- **Woodland** — Jay Cornwall (https://jcornwall.com)
+- **XCode Dusk** — Elsa Gonsiorowski (https://github.com/gonsie)
+- **Yesterday** — FroZnShiva (https://github.com/FroZnShiva)
+- **Yesterday Bright** — FroZnShiva (https://github.com/FroZnShiva)
+- **Yesterday Night** — FroZnShiva (https://github.com/FroZnShiva)
+- **Zenbones** — mcchrish
+- **Zenburn** — elnawe
+- **boo-shnickle** — boo-shnickle (@boo_shnickle)
+- **caroline** — ed (https://codeberg.org/ed)
+- **darkmoss** — Gabriel Avanzi (https://github.com/avanzzzi)
+- **eris** — ed (https://codeberg.org/ed), Tinted Theming (https://github.com/tinted-theming)
+- **iA Dark** — iA Inc. (modified by aramisgithub)
+- **lime** — limelier
+- **pandora** — Cassandra Fox
+- **pinky** — Benjamin (https://github.com/b3nj5m1n)
+- **selenized-black** — Jan Warchol (https://github.com/jan-warchol/selenized) / adapted to base16 by ali
+- **selenized-dark** — Jan Warchol (https://github.com/jan-warchol/selenized) / adapted to base16 by ali
+- **standardized-dark** — ali (https://github.com/ali-githb/base16-standardized-scheme)
+- **summercamp** — zoe firi (zoefiri.github.io)
+- **tarot** — ed (https://codeberg.org/ed)
+- **tender** — Jacobo Tabernero (https://github/com/jacoborus/tender.vim)
+- **vice** — Thomas Leon Highbaugh thighbaugh@zoho.com
+- **vulcan** — Andrey Varfolomeev

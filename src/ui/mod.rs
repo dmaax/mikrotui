@@ -7,6 +7,7 @@ pub mod ping_modal;
 pub mod sidebar;
 pub mod statusbar;
 pub mod theme;
+pub mod theme_modal;
 pub mod views;
 
 use crate::app::{App, Tab};
@@ -68,6 +69,9 @@ pub fn render(f: &mut Frame, app: &App) {
 
     // Quick Host Switcher Modal
     host_switch_modal::render_host_switch_modal(f, app);
+
+    // Theme picker
+    theme_modal::render_theme_modal(f, app);
 }
 
 #[cfg(test)]

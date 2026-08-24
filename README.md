@@ -18,7 +18,7 @@
 - 📜 **System Logs Stream**: Live log viewer categorized by topics with color highlights (`system`, `ssh`, `error`, `warning`).
 - 📡 **Interactive Ping Diagnostic (`p`)**: Built-in ICMP ping tool running directly from the router to any target IP/hostname, displaying packet loss % and RTT statistics (Min/Avg/Max).
 - 🔍 **Item Details Modal (`Enter`)**: Centered popup displaying complete, unclipped properties and long comments for any selected item.
-- 🎨 **Clean Theme Engine (`t`)**: Dynamically switch between high-contrast minimalist themes: **WinBox Dark** (default), **Nord Slate**, and **High Contrast**.
+- 🎨 **239 Themes (`t`)**: WinBox Dark plus 238 [base16](https://github.com/tinted-theming/schemes) dark schemes — Catppuccin, Dracula, Gruvbox, Nord, Tokyo Night, Solarized and more. Searchable picker with live preview; drop your own base16 YAML into `~/.config/mikrotui/themes/`.
 - 🔑 **Host Key Verification**: The router's SSH key is checked against `~/.ssh/known_hosts` before any credential is sent; a changed key aborts the connection.
 - 🔒 **Credentials**: No password is stored by default — read from stdin, the environment, the OS keyring (`--features keyring`), or an interactive prompt. See [Security](#-security).
 - ⚡ **Non-Blocking Async Core**: Built on Tokio and Ratatui. All SSH data fetching runs in background threads with strict debounce guards to prevent UI lag or freeze.
@@ -117,7 +117,7 @@ mikrotui exec "/ip address print"
 | **Enter** | Open Item Details modal (view complete properties & comments) |
 | **p** | Open interactive Ping Diagnostic tool (`/ping <target>`) |
 | **/** | Activate live filter search (type query, `Enter`/`Esc` to finish) |
-| **t** | Cycle color themes (*WinBox Dark*, *Nord Slate*, *High Contrast*) |
+| **t** | Open the theme picker — type to search, `↑↓` to preview, `Enter` to keep |
 | **Ctrl+O** | Switch to another stored router host |
 | **r / F5** | Refresh data via SSH in background (*Non-blocking*) |
 | **?** | Open / close Keyboard Shortcuts & Help modal |
@@ -217,6 +217,29 @@ The config file and `known_hosts` are created with mode `0600` **at creation tim
 chmod-ed afterwards, so credentials are never briefly world-readable.
 
 ---
+
+## 🎨 Themes
+
+Press `t` for a searchable picker. Typing filters by name, slug or author; the arrow keys
+preview each theme against the real screen, `Enter` keeps it and `Esc` puts back what you
+had. The choice is remembered in `config.json`.
+
+238 base16 **dark** schemes are bundled from
+[tinted-theming/schemes](https://github.com/tinted-theming/schemes) (MIT — see
+[themes/CREDITS.md](themes/CREDITS.md) for the full author list). Light variants are not
+included: several elements assume a dark background, and shipping schemes that look wrong
+would be worse than leaving them out.
+
+Any base16 file works. To add one, drop it in:
+
+```bash
+mkdir -p ~/.config/mikrotui/themes
+curl -o ~/.config/mikrotui/themes/my-scheme.yaml \
+  https://raw.githubusercontent.com/tinted-theming/schemes/spec-0.11/base16/nord.yaml
+```
+
+The filename is the slug, and a file replacing a bundled slug wins — so a scheme can be
+corrected locally without waiting for a release. Only `variant: dark` files are loaded.
 
 ## 📄 License
 
