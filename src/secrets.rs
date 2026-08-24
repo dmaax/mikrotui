@@ -71,6 +71,22 @@ mod backend {
 
     static INIT: Once = Once::new();
 
+    /// Run keyring work on a thread of its own.
+    ///
+    /// The Secret Service backend bridges its async D-Bus client into the synchronous
+    /// keyring API with `block_on`, and tokio panics outright when that happens on one of
+    /// its worker threads: "Cannot start a runtime from within a runtime". Every entry
+    /// point below is reachable from inside `#[tokio::main]` — the `host` subcommands,
+    /// host selection at startup, and switching host from the TUI, which would have taken
+    /// the whole session down mid-use.
+    ///
+    /// A thread per call is affordable because these are rare and already wait on D-Bus.
+    /// Doing it here rather than at the call sites keeps the guarantee in one place: a new
+    /// caller cannot forget it.
+    fn off_runtime<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static, on_panic: T) -> T {
+        std::thread::spawn(work).join().unwrap_or(on_panic)
+    }
+
     /// Register the platform credential store exactly once.
     ///
     /// On Linux/BSD this is the pure-Rust zbus Secret Service client, chosen over the
@@ -112,24 +128,39 @@ mod backend {
     }
 
     pub fn get(account: &str) -> Option<String> {
-        match entry(account) {
-            Ok(e) => match e.get_password() {
-                Ok(p) if !p.is_empty() => Some(p),
-                _ => None,
+        let account = account.to_string();
+        off_runtime(
+            move || match entry(&account) {
+                Ok(e) => match e.get_password() {
+                    Ok(p) if !p.is_empty() => Some(p),
+                    _ => None,
+                },
+                Err(_) => None,
             },
-            Err(_) => None,
-        }
+            None,
+        )
     }
 
     pub fn set(account: &str, password: &str) -> Result<()> {
-        entry(account)?
-            .set_password(password)
-            .map_err(|e| anyhow!("could not write to the OS keyring: {e}"))
+        let (account, password) = (account.to_string(), password.to_string());
+        off_runtime(
+            move || {
+                entry(&account)?
+                    .set_password(&password)
+                    .map_err(|e| anyhow!("could not write to the OS keyring: {e}"))
+            },
+            Err(anyhow!("the keyring thread panicked")),
+        )
     }
 
     pub fn available() -> bool {
-        init();
-        keyring_core::get_default_store().is_some()
+        off_runtime(
+            || {
+                init();
+                keyring_core::get_default_store().is_some()
+            },
+            false,
+        )
     }
 }
 
@@ -180,6 +211,20 @@ mod tests {
             account_id("admin", "192.168.88.1", 2222),
             "admin@192.168.88.1:2222"
         );
+    }
+
+    /// Every keyring entry point is reachable from inside `#[tokio::main]` — the `host`
+    /// subcommands, host selection at startup, and switching host from the TUI. The
+    /// Secret Service backend bridges async D-Bus into the sync keyring API with
+    /// `block_on`, which panics on a tokio worker thread, so these must not run there.
+    #[tokio::test]
+    async fn keyring_calls_are_safe_inside_a_tokio_runtime() {
+        let account = account_id("admin", "10.255.255.1", 22);
+
+        // A panic here fails the test; the values themselves depend on the machine.
+        let _ = keyring_available();
+        let _ = keyring_get(&account);
+        let _ = keyring_set(&account, "probe");
     }
 
     #[test]
